@@ -54,7 +54,7 @@ class ControlPanel(QWidget):
         grid.setHorizontalSpacing(12)
         layout.addLayout(grid)
 
-        for row, (axis, rng) in enumerate(("yaw", 45), ("pitch", 30), ("roll", 25)):
+        for row, (axis, rng) in enumerate((("yaw", 45), ("pitch", 30), ("roll", 25))):
             label = QLabel(axis.upper())
             label.setStyleSheet("font-size: 14px; font-weight: 500;")
             grid.addWidget(label, row, 0)

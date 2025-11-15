@@ -150,8 +150,21 @@ class RoboticFaceWidget(QWidget):
         painter.fillRect(rect, bg_gradient)
 
         face_margin = rect.height() * 0.08
-        face_rect = QRectF(rect.left() + face_margin, rect.top() + face_margin, rect.width() - face_margin * 2, rect.height() - face_margin * 2)
+        face_rect = QRectF(
+            rect.left() + face_margin,
+            rect.top() + face_margin,
+            rect.width() - face_margin * 2,
+            rect.height() - face_margin * 2,
+        )
 
+        center = face_rect.center()
+        head_size = min(face_rect.width(), face_rect.height()) * 0.92
+        face_rect = QRectF(
+            center.x() - head_size * 0.5,
+            center.y() - head_size * 0.5,
+            head_size,
+            head_size,
+        )
         center = face_rect.center()
         painter.save()
         painter.translate(center)
@@ -166,15 +179,19 @@ class RoboticFaceWidget(QWidget):
         shadow.setColorAt(1.0, QColor(0, 0, 0, 80))
         painter.setBrush(shadow)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(shadow_rect, face_rect.width() * 0.25, face_rect.height() * 0.25)
+        shadow_path = QPainterPath()
+        shadow_path.addEllipse(shadow_rect)
+        painter.drawPath(shadow_path)
 
         head_gradient = QLinearGradient(face_rect.topLeft(), face_rect.bottomLeft())
-        head_gradient.setColorAt(0.0, QColor(32, 36, 60))
-        head_gradient.setColorAt(0.45, QColor(24, 28, 48))
-        head_gradient.setColorAt(1.0, QColor(12, 16, 30))
+        head_gradient.setColorAt(0.0, QColor(40, 48, 82))
+        head_gradient.setColorAt(0.4, QColor(26, 32, 58))
+        head_gradient.setColorAt(1.0, QColor(10, 14, 28))
         painter.setBrush(head_gradient)
-        painter.setPen(QPen(QColor(90, 100, 160, 120), face_rect.width() * 0.01))
-        painter.drawRoundedRect(face_rect, face_rect.width() * 0.3, face_rect.height() * 0.3)
+        painter.setPen(QPen(QColor(110, 140, 220, 140), face_rect.width() * 0.012))
+        head_path = QPainterPath()
+        head_path.addEllipse(face_rect)
+        painter.drawPath(head_path)
 
         accent_color: QColor = self._state["accent_color"]
 
@@ -187,15 +204,22 @@ class RoboticFaceWidget(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(face_rect.adjusted(-20, -20, 20, 20), face_rect.width() * 0.32, face_rect.height() * 0.32)
 
-        eye_height = face_rect.height() * 0.22
-        eye_width = face_rect.width() * 0.22
-        eye_spacing = face_rect.width() * 0.16
+        eye_height = face_rect.height() * 0.24
+        eye_width = face_rect.width() * 0.26
+        eye_spacing = face_rect.width() * 0.18
 
         yaw_offset = self._orientation["yaw"] / 45.0
         pitch_offset = self._orientation["pitch"] / 45.0
+        eye_center_offset_x = yaw_offset * face_rect.width() * 0.05
 
-        left_eye_center = QPointF(center.x() - eye_spacing, center.y() - face_rect.height() * 0.05 + pitch_offset * 12.0)
-        right_eye_center = QPointF(center.x() + eye_spacing, center.y() - face_rect.height() * 0.05 + pitch_offset * 12.0)
+        left_eye_center = QPointF(
+            center.x() - eye_spacing + eye_center_offset_x,
+            center.y() - face_rect.height() * 0.05 + pitch_offset * 14.0,
+        )
+        right_eye_center = QPointF(
+            center.x() + eye_spacing + eye_center_offset_x,
+            center.y() - face_rect.height() * 0.05 + pitch_offset * 14.0,
+        )
 
         eye_openness = max(0.05, min(1.3, self._state["eye_openness"]))
         eye_curve = self._state["eye_curve"]
@@ -220,7 +244,7 @@ class RoboticFaceWidget(QWidget):
                 effective_openness,
                 eye_curve * direction,
                 iris_size,
-                yaw_offset * direction,
+                yaw_offset,
                 pitch_offset,
                 accent_color,
                 sparkle,
@@ -252,58 +276,50 @@ class RoboticFaceWidget(QWidget):
         sparkle: float,
     ) -> None:
         vertical_scale = openness
+        scaled_height = height * vertical_scale
         eye_rect = QRectF(
             center.x() - width * 0.5,
-            center.y() - height * vertical_scale * 0.5 + self._breathe_offset * 0.1,
+            center.y() - scaled_height * 0.5 + self._breathe_offset * 0.1,
             width,
-            height * vertical_scale,
+            scaled_height,
         )
 
-        lid_path = QPainterPath()
-        left = eye_rect.topLeft()
-        right = eye_rect.topRight()
-        bottom_left = eye_rect.bottomLeft()
-        bottom_right = eye_rect.bottomRight()
+        painter.save()
+        painter.translate(eye_rect.center())
+        painter.rotate(curve * 12.0)
+        painter.translate(-eye_rect.center())
 
-        control_offset = height * 0.5 * (1.0 + curve)
-        lid_path.moveTo(left)
-        lid_path.cubicTo(
-            QPointF(eye_rect.center().x() - width * 0.2, eye_rect.top() - control_offset),
-            QPointF(eye_rect.center().x() + width * 0.2, eye_rect.top() - control_offset),
-            right,
-        )
-        lid_path.cubicTo(
-            QPointF(eye_rect.center().x() + width * 0.25, eye_rect.bottom() + control_offset * 0.6),
-            QPointF(eye_rect.center().x() - width * 0.25, eye_rect.bottom() + control_offset * 0.6),
-            left,
-        )
+        outer_path = QPainterPath()
+        outer_path.addRoundedRect(eye_rect, width * 0.45, scaled_height * 0.45)
 
         eye_gradient = QLinearGradient(eye_rect.topLeft(), eye_rect.bottomLeft())
-        eye_gradient.setColorAt(0.0, QColor(220, 230, 255, 245))
-        eye_gradient.setColorAt(1.0, QColor(120, 140, 220, 220))
+        eye_gradient.setColorAt(0.0, QColor(235, 240, 255, 235))
+        eye_gradient.setColorAt(0.4, QColor(195, 205, 255, 230))
+        eye_gradient.setColorAt(1.0, QColor(120, 140, 220, 215))
 
         painter.setBrush(eye_gradient)
-        painter.setPen(QPen(QColor(70, 80, 140), max(2.0, width * 0.04)))
-        painter.drawPath(lid_path)
+        painter.setPen(QPen(QColor(70, 90, 160), max(2.0, width * 0.035)))
+        painter.drawPath(outer_path)
 
-        iris_radius = min(width, height) * 0.32 * iris_scale
+        iris_radius = min(width, scaled_height) * 0.32 * iris_scale
         iris_offset_x = yaw_offset * width * 0.45
-        iris_offset_y = pitch_offset * height * 0.28
+        iris_offset_y = pitch_offset * scaled_height * 0.35
         iris_center = QPointF(center.x() + iris_offset_x, center.y() + iris_offset_y)
 
         iris_gradient = QLinearGradient(iris_center.x(), iris_center.y() - iris_radius, iris_center.x(), iris_center.y() + iris_radius)
-        iris_gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 230))
-        iris_gradient.setColorAt(1.0, QColor(20, 30, 60, 230))
+        iris_gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 240))
+        iris_gradient.setColorAt(0.6, QColor(40, 60, 100, 230))
+        iris_gradient.setColorAt(1.0, QColor(10, 20, 40, 230))
 
         painter.setBrush(iris_gradient)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(iris_center, iris_radius, iris_radius)
 
-        pupil_radius = iris_radius * 0.45
-        painter.setBrush(QColor(10, 12, 20))
+        pupil_radius = iris_radius * 0.48
+        painter.setBrush(QColor(8, 10, 18))
         painter.drawEllipse(iris_center, pupil_radius, pupil_radius)
 
-        highlight_radius = iris_radius * (0.22 + sparkle * 0.12)
+        highlight_radius = iris_radius * (0.24 + sparkle * 0.12)
         highlight_center = QPointF(iris_center.x() - pupil_radius * 0.45, iris_center.y() - pupil_radius * 0.55)
         painter.setBrush(QColor(255, 255, 255, 220))
         painter.drawEllipse(highlight_center, highlight_radius, highlight_radius)
@@ -311,6 +327,25 @@ class RoboticFaceWidget(QWidget):
         lower_highlight_center = QPointF(iris_center.x() + pupil_radius * 0.3, iris_center.y() + pupil_radius * 0.4)
         painter.setBrush(QColor(255, 255, 255, int(90 * sparkle)))
         painter.drawEllipse(lower_highlight_center, highlight_radius * 0.4, highlight_radius * 0.4)
+
+        lid_shine = QLinearGradient(eye_rect.topLeft(), eye_rect.topRight())
+        lid_shine.setColorAt(0.0, QColor(255, 255, 255, 35))
+        lid_shine.setColorAt(0.5, QColor(255, 255, 255, 80))
+        lid_shine.setColorAt(1.0, QColor(255, 255, 255, 35))
+        painter.setBrush(lid_shine)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(
+            QRectF(
+                eye_rect.left() + eye_rect.width() * 0.1,
+                eye_rect.top() + eye_rect.height() * 0.05,
+                eye_rect.width() * 0.8,
+                eye_rect.height() * 0.35,
+            ),
+            eye_rect.height() * 0.15,
+            eye_rect.height() * 0.15,
+        )
+
+        painter.restore()
 
     def _draw_brows(
         self,
@@ -352,43 +387,64 @@ class RoboticFaceWidget(QWidget):
             painter.restore()
 
     def _draw_mouth(self, painter: QPainter, center: QPointF, face_rect: QRectF, accent: QColor) -> None:
-        mouth_width = face_rect.width() * 0.42 * self._state["mouth_width"]
-        mouth_height = face_rect.height() * 0.18 * self._state["mouth_height"]
+        mouth_width = face_rect.width() * 0.44 * self._state["mouth_width"]
+        mouth_height = face_rect.height() * 0.2 * self._state["mouth_height"]
         mouth_curve = self._state["mouth_curve"]
         mouth_open = self._state["mouth_open"]
 
+        yaw_offset = self._orientation["yaw"] / 45.0
         base_y = center.y() + face_rect.height() * 0.28 + self._breathe_offset * 0.25
+        mouth_center_offset = yaw_offset * face_rect.width() * 0.06
 
-        left = QPointF(center.x() - mouth_width * 0.5, base_y)
-        right = QPointF(center.x() + mouth_width * 0.5, base_y)
-        control_top = QPointF(center.x(), base_y - mouth_height * (0.6 + mouth_curve))
-        control_bottom = QPointF(center.x(), base_y + mouth_height * (0.4 + mouth_open))
+        left = QPointF(center.x() - mouth_width * 0.5 + mouth_center_offset, base_y)
+        right = QPointF(center.x() + mouth_width * 0.5 + mouth_center_offset, base_y)
+        control_top = QPointF(center.x() + mouth_center_offset, base_y - mouth_height * (0.65 + mouth_curve))
+        control_bottom = QPointF(center.x() + mouth_center_offset, base_y + mouth_height * (0.45 + mouth_open))
 
         path = QPainterPath(left)
         path.quadTo(control_top, right)
         path.quadTo(control_bottom, left)
         path.closeSubpath()
 
-        gradient = QLinearGradient(left, QPointF(left.x(), base_y + mouth_height))
-        gradient.setColorAt(0.0, QColor(20, 10, 20, 240))
-        gradient.setColorAt(0.7, QColor(accent.red(), accent.green(), accent.blue(), 220))
-        gradient.setColorAt(1.0, QColor(255, 255, 255, 120))
+        gradient = QLinearGradient(
+            QPointF(left.x(), base_y - mouth_height * 0.6),
+            QPointF(right.x(), base_y + mouth_height * 0.8),
+        )
+        gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 120))
+        gradient.setColorAt(0.35, QColor(30, 18, 36, 230))
+        gradient.setColorAt(0.7, QColor(20, 12, 26, 240))
+        gradient.setColorAt(1.0, QColor(255, 80, 160, 140))
 
         painter.setBrush(gradient)
-        painter.setPen(QPen(QColor(255, 255, 255, 80), 2.0))
+        painter.setPen(QPen(QColor(255, 255, 255, 90), 2.2))
         painter.drawPath(path)
 
         if mouth_open > 0.2:
             inner_path = QPainterPath(left)
-            inner_top = QPointF(center.x(), base_y - mouth_height * (0.4 + mouth_curve * 0.5))
-            inner_bottom = QPointF(center.x(), base_y + mouth_height * (0.8 + mouth_open))
+            inner_top = QPointF(center.x() + mouth_center_offset, base_y - mouth_height * (0.45 + mouth_curve * 0.5))
+            inner_bottom = QPointF(center.x() + mouth_center_offset, base_y + mouth_height * (0.85 + mouth_open))
             inner_path.quadTo(inner_top, right)
             inner_path.quadTo(inner_bottom, left)
             inner_path.closeSubpath()
 
-            painter.setBrush(QColor(255, 255, 255, 35))
+            inner_gradient = QLinearGradient(inner_top, inner_bottom)
+            inner_gradient.setColorAt(0.0, QColor(255, 255, 255, 40))
+            inner_gradient.setColorAt(0.8, QColor(255, 120, 200, 90))
+            painter.setBrush(inner_gradient)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPath(inner_path)
+
+        gloss_rect = QRectF(
+            center.x() - mouth_width * 0.35 + mouth_center_offset,
+            base_y - mouth_height * 0.25,
+            mouth_width * 0.7,
+            mouth_height * 0.4,
+        )
+        gloss_path = QPainterPath()
+        gloss_path.addRoundedRect(gloss_rect, mouth_height * 0.3, mouth_height * 0.3)
+        painter.setBrush(QColor(255, 255, 255, 40))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(gloss_path)
 
     def _draw_cheeks(
         self,
