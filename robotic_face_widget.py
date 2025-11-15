@@ -389,39 +389,61 @@ class RoboticFaceWidget(QWidget):
         mouth_center.setY(max(min_center_y, min(max_center_y, mouth_center.y())))
 
         half_width = mouth_width * 0.5
-        left_point = QPointF(mouth_center.x() - half_width, mouth_center.y())
-        right_point = QPointF(mouth_center.x() + half_width, mouth_center.y())
+        control_offset = mouth_height * 1.45
+        open_amount = face_rect.height() * openness_factor
 
-        control_offset = mouth_height * 1.5
-        control_point = QPointF(
+        corner_lift = control_offset * 0.35 * smile_factor
+        left_corner = QPointF(mouth_center.x() - half_width, mouth_center.y() - corner_lift)
+        right_corner = QPointF(mouth_center.x() + half_width, mouth_center.y() - corner_lift)
+
+        top_control = QPointF(mouth_center.x(), mouth_center.y() - control_offset * smile_factor)
+
+        lower_corner_bias = control_offset * 0.18 * smile_factor
+        lower_left = QPointF(left_corner.x(), mouth_center.y() + open_amount + lower_corner_bias)
+        lower_right = QPointF(right_corner.x(), mouth_center.y() + open_amount + lower_corner_bias)
+
+        bottom_control = QPointF(
             mouth_center.x(),
-            mouth_center.y() - control_offset * smile_factor,
+            mouth_center.y() + open_amount + control_offset * (0.28 + max(0.0, -smile_factor) * 0.45),
         )
 
-        pen_color = QColor(
-            int(accent.red() * 0.8 + 40),
-            int(accent.green() * 0.8 + 40),
-            int(accent.blue() * 0.8 + 40),
-        )
-        base_pen = QPen(pen_color, max(2.0, face_rect.width() * 0.005), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        top_path = QPainterPath(left_corner)
+        top_path.quadTo(top_control, right_corner)
 
         painter.save()
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(base_pen)
 
-        upper_path = QPainterPath(left_point)
-        upper_path.quadTo(control_point, right_point)
-        painter.drawPath(upper_path)
+        if open_amount > face_rect.height() * 0.003:
+            fill_path = QPainterPath(left_corner)
+            fill_path.quadTo(top_control, right_corner)
+            fill_path.lineTo(lower_right)
+            fill_path.quadTo(bottom_control, lower_left)
+            fill_path.closeSubpath()
 
-        open_amount = face_rect.height() * openness_factor
-        if open_amount > 0.0:
-            lower_control_point = QPointF(
-                mouth_center.x(),
-                mouth_center.y() + open_amount + control_offset * 0.4,
+            fill_color = QColor(
+                int(accent.red() * 0.6 + 50),
+                int(accent.green() * 0.55 + 45),
+                int(accent.blue() * 0.55 + 55),
+                140,
             )
-            lower_path = QPainterPath(QPointF(left_point.x(), mouth_center.y() + open_amount))
-            lower_path.quadTo(lower_control_point, QPointF(right_point.x(), mouth_center.y() + open_amount))
-            subtle_pen = QPen(pen_color.lighter(115), max(1.4, face_rect.width() * 0.004), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            painter.setBrush(fill_color)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawPath(fill_path)
+
+        pen_color = QColor(
+            int(accent.red() * 0.75 + 35),
+            int(accent.green() * 0.75 + 35),
+            int(accent.blue() * 0.75 + 45),
+        )
+
+        stroke_width = max(1.8, face_rect.width() * 0.0045)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(pen_color, stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawPath(top_path)
+
+        if open_amount > face_rect.height() * 0.003:
+            lower_path = QPainterPath(lower_left)
+            lower_path.quadTo(bottom_control, lower_right)
+            subtle_pen = QPen(pen_color.lighter(120), stroke_width * 0.85, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
             painter.setPen(subtle_pen)
             painter.drawPath(lower_path)
 
