@@ -362,86 +362,96 @@ class RoboticFaceWidget(QWidget):
             painter.restore()
 
     def _draw_mouth(self, painter: QPainter, center: QPointF, face_rect: QRectF, accent: QColor) -> None:
-        mouth_width = face_rect.width() * 0.44 * self._state["mouth_width"]
-        mouth_height = face_rect.height() * 0.2 * self._state["mouth_height"]
-        mouth_curve = self._state["mouth_curve"]
-        mouth_open = self._state["mouth_open"]
+        width_factor = 0.4 * self._state["mouth_width"]
+        height_factor = 0.16 * self._state["mouth_height"]
+        openness_factor = 0.08 * self._state["mouth_open"]
+        smile_factor = self._state["mouth_curve"]
 
         yaw_offset = self._orientation["yaw"] / 45.0
-        base_y = center.y() + face_rect.height() * 0.28 + self._breathe_offset * 0.25
-        mouth_center_offset = yaw_offset * face_rect.width() * 0.06
+        mouth_center_offset = yaw_offset * face_rect.width() * 0.05
 
-        corner_lift = mouth_height * mouth_curve * 0.4
-        left_corner = QPointF(center.x() - mouth_width * 0.5 + mouth_center_offset, base_y - corner_lift)
-        right_corner = QPointF(center.x() + mouth_width * 0.5 + mouth_center_offset, base_y - corner_lift)
-
-        top_ctrl_y = base_y - mouth_height * (0.18 + mouth_curve * 0.9)
-        bottom_ctrl_y = base_y + mouth_height * (0.35 + mouth_open * 1.1)
-
-        path = QPainterPath(left_corner)
-        path.cubicTo(
-            QPointF(left_corner.x() + mouth_width * 0.24, top_ctrl_y),
-            QPointF(right_corner.x() - mouth_width * 0.24, top_ctrl_y),
-            right_corner,
+        mouth_center = QPointF(
+            center.x() + mouth_center_offset,
+            center.y() + face_rect.height() * 0.26 + self._breathe_offset * 0.18 - face_rect.height() * 0.04 * smile_factor,
         )
-        path.cubicTo(
-            QPointF(right_corner.x() - mouth_width * 0.18, bottom_ctrl_y),
-            QPointF(left_corner.x() + mouth_width * 0.18, bottom_ctrl_y),
-            left_corner,
+
+        mouth_width = face_rect.width() * width_factor
+        mouth_height = face_rect.height() * (height_factor + openness_factor * 1.6)
+
+        horizontal_margin = face_rect.width() * 0.08
+        vertical_margin = face_rect.height() * 0.08
+        max_center_x = face_rect.right() - horizontal_margin - mouth_width * 0.5
+        min_center_x = face_rect.left() + horizontal_margin + mouth_width * 0.5
+        mouth_center.setX(max(min_center_x, min(max_center_x, mouth_center.x())))
+
+        max_center_y = face_rect.bottom() - vertical_margin - mouth_height * 0.5
+        min_center_y = face_rect.top() + vertical_margin + mouth_height * 0.5
+        mouth_center.setY(max(min_center_y, min(max_center_y, mouth_center.y())))
+
+        outer_rect = QRectF(
+            mouth_center.x() - mouth_width * 0.5,
+            mouth_center.y() - mouth_height * 0.5,
+            mouth_width,
+            mouth_height,
         )
-        path.closeSubpath()
 
-        lip_gradient = QLinearGradient(left_corner, QPointF(right_corner.x(), bottom_ctrl_y))
-        lip_gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 150))
-        lip_gradient.setColorAt(0.5, QColor(40, 14, 42, 235))
-        lip_gradient.setColorAt(1.0, QColor(160, 40, 110, 200))
+        lip_gradient = QLinearGradient(outer_rect.topLeft(), outer_rect.bottomLeft())
+        lip_gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 180))
+        lip_gradient.setColorAt(1.0, QColor(200, 60, 140, 220))
 
+        outer_path = QPainterPath()
+        outer_path.addEllipse(outer_rect)
+
+        pen_width = max(1.6, mouth_width * 0.01)
         painter.setBrush(lip_gradient)
-        painter.setPen(QPen(QColor(255, 255, 255, 70), max(1.8, mouth_width * 0.01)))
-        painter.drawPath(path)
+        painter.setPen(QPen(QColor(255, 255, 255, 95), pen_width))
+        painter.drawPath(outer_path)
 
-        if mouth_open > 0.05:
-            inner_left = QPointF(left_corner.x() + mouth_width * 0.12, base_y + mouth_height * 0.08)
-            inner_right = QPointF(right_corner.x() - mouth_width * 0.12, base_y + mouth_height * 0.08)
-            cavity_top_y = base_y - mouth_height * (0.05 + max(0.0, mouth_curve) * 0.2)
-            cavity_bottom_y = base_y + mouth_height * (0.55 + mouth_open * 1.2)
+        if self._state["mouth_open"] > 0.02:
+            inner_scale = 0.68 + self._state["mouth_open"] * 0.25
+            inner_height_scale = 0.62 + self._state["mouth_open"] * 0.55
 
-            inner_path = QPainterPath(inner_left)
-            inner_path.cubicTo(
-                QPointF(inner_left.x() + mouth_width * 0.18, cavity_top_y),
-                QPointF(inner_right.x() - mouth_width * 0.18, cavity_top_y),
-                inner_right,
+            inner_rect = QRectF(
+                mouth_center.x() - mouth_width * 0.5 * inner_scale,
+                mouth_center.y() - mouth_height * 0.5 * inner_height_scale,
+                mouth_width * inner_scale,
+                mouth_height * inner_height_scale,
             )
-            inner_path.cubicTo(
-                QPointF(inner_right.x() - mouth_width * 0.16, cavity_bottom_y),
-                QPointF(inner_left.x() + mouth_width * 0.16, cavity_bottom_y),
-                inner_left,
-            )
-            inner_path.closeSubpath()
 
-            inner_gradient = QLinearGradient(
-                QPointF(inner_left.x(), cavity_top_y), QPointF(inner_right.x(), cavity_bottom_y)
-            )
-            inner_gradient.setColorAt(0.0, QColor(255, 210, 230, 80))
-            inner_gradient.setColorAt(0.5, QColor(70, 20, 60, 240))
-            inner_gradient.setColorAt(1.0, QColor(20, 8, 20, 255))
+            inner_path = QPainterPath()
+            inner_path.addEllipse(inner_rect)
 
-            painter.setBrush(inner_gradient)
+            painter.setBrush(QColor(40, 10, 40))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPath(inner_path)
 
-        highlight_path = QPainterPath()
-        highlight_start = QPointF(left_corner.x() + mouth_width * 0.18, top_ctrl_y + mouth_height * 0.12)
-        highlight_end = QPointF(right_corner.x() - mouth_width * 0.18, top_ctrl_y + mouth_height * 0.12)
-        highlight_path.moveTo(highlight_start)
-        highlight_path.cubicTo(
-            QPointF(highlight_start.x() + mouth_width * 0.12, top_ctrl_y + mouth_height * 0.05),
-            QPointF(highlight_end.x() - mouth_width * 0.12, top_ctrl_y + mouth_height * 0.05),
-            highlight_end,
-        )
+            painter.save()
+            painter.setClipPath(inner_path)
 
-        painter.setPen(QPen(QColor(255, 255, 255, 110), mouth_height * 0.08))
-        painter.drawPath(highlight_path)
+            teeth_height = inner_rect.height() * 0.28
+            teeth_rect = QRectF(
+                inner_rect.left() + inner_rect.width() * 0.08,
+                inner_rect.top() + inner_rect.height() * 0.05,
+                inner_rect.width() * 0.84,
+                teeth_height,
+            )
+            painter.setBrush(QColor(255, 248, 240))
+            painter.setPen(QPen(QColor(235, 220, 210), max(0.6, mouth_width * 0.006)))
+            painter.drawRoundedRect(teeth_rect, teeth_height * 0.4, teeth_height * 0.4)
+
+            tongue_width = inner_rect.width() * 0.65
+            tongue_height = inner_rect.height() * (0.42 + self._state["mouth_open"] * 0.25)
+            tongue_rect = QRectF(
+                mouth_center.x() - tongue_width * 0.5,
+                inner_rect.bottom() - tongue_height * 1.02,
+                tongue_width,
+                tongue_height,
+            )
+            painter.setBrush(QColor(220, 90, 140))
+            painter.setPen(QPen(QColor(255, 150, 190, 140), max(0.8, mouth_width * 0.006)))
+            painter.drawEllipse(tongue_rect)
+
+            painter.restore()
 
     # ------------------------------------------------------------------
     # Utilities
