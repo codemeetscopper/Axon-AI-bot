@@ -22,7 +22,6 @@ class EmotionPreset:
     mouth_width: float
     mouth_height: float
     iris_size: float
-    cheek_intensity: float
     accent_color: Tuple[int, int, int]
 
 
@@ -171,18 +170,6 @@ class RoboticFaceWidget(QWidget):
         painter.rotate(self._orientation["roll"] * 0.8)
         painter.translate(-center)
 
-        # Head shadow
-        # shadow_rect = QRectF(face_rect)
-        # shadow_rect.translate(0, face_rect.height() * 0.04)
-        # shadow = QLinearGradient(shadow_rect.topLeft(), shadow_rect.bottomLeft())
-        # shadow.setColorAt(0.0, QColor(0, 0, 0, 0))
-        # shadow.setColorAt(1.0, QColor(0, 0, 0, 80))
-        # painter.setBrush(shadow)
-        # painter.setPen(Qt.PenStyle.NoPen)
-        # shadow_path = QPainterPath()
-        # shadow_path.addEllipse(shadow_rect)
-        # painter.drawPath(shadow_path)
-
         head_gradient = QLinearGradient(face_rect.topLeft(), face_rect.bottomLeft())
         head_gradient.setColorAt(0.0, QColor(40, 48, 82))
         head_gradient.setColorAt(0.4, QColor(26, 32, 58))
@@ -194,15 +181,6 @@ class RoboticFaceWidget(QWidget):
         painter.drawPath(head_path)
 
         accent_color: QColor = self._state["accent_color"]
-
-        # Glowing halo
-        # halo_gradient = QLinearGradient(center.x(), face_rect.top(), center.x(), face_rect.bottom())
-        # halo_gradient.setColorAt(0.0, QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 90))
-        # halo_gradient.setColorAt(0.6, QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 10))
-        # halo_gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
-        # painter.setBrush(halo_gradient)
-        # painter.setPen(Qt.PenStyle.NoPen)
-        # painter.drawRoundedRect(face_rect.adjusted(-20, -20, 20, 20), face_rect.width() * 0.32, face_rect.height() * 0.32)
 
         eye_height = face_rect.height() * 0.24
         eye_width = face_rect.width() * 0.26
@@ -252,11 +230,8 @@ class RoboticFaceWidget(QWidget):
 
         self._draw_brows(painter, left_eye_center, right_eye_center, eye_width, brow_raise, brow_tilt, accent_color)
         self._draw_mouth(painter, center, face_rect, accent_color)
-        # self._draw_cheeks(painter, left_eye_center, right_eye_center, face_rect, accent_color)
 
         painter.restore()
-
-        # self._draw_overlay_highlights(painter, face_rect)
 
     # ------------------------------------------------------------------
     # Feature drawing helpers
@@ -396,106 +371,77 @@ class RoboticFaceWidget(QWidget):
         base_y = center.y() + face_rect.height() * 0.28 + self._breathe_offset * 0.25
         mouth_center_offset = yaw_offset * face_rect.width() * 0.06
 
-        left = QPointF(center.x() - mouth_width * 0.5 + mouth_center_offset, base_y)
-        right = QPointF(center.x() + mouth_width * 0.5 + mouth_center_offset, base_y)
-        control_top = QPointF(center.x() + mouth_center_offset, base_y - mouth_height * (0.65 + mouth_curve))
-        control_bottom = QPointF(center.x() + mouth_center_offset, base_y + mouth_height * (0.45 + mouth_open))
+        corner_lift = mouth_height * mouth_curve * 0.4
+        left_corner = QPointF(center.x() - mouth_width * 0.5 + mouth_center_offset, base_y - corner_lift)
+        right_corner = QPointF(center.x() + mouth_width * 0.5 + mouth_center_offset, base_y - corner_lift)
 
-        path = QPainterPath(left)
-        path.quadTo(control_top, right)
-        path.quadTo(control_bottom, left)
+        top_ctrl_y = base_y - mouth_height * (0.18 + mouth_curve * 0.9)
+        bottom_ctrl_y = base_y + mouth_height * (0.35 + mouth_open * 1.1)
+
+        path = QPainterPath(left_corner)
+        path.cubicTo(
+            QPointF(left_corner.x() + mouth_width * 0.24, top_ctrl_y),
+            QPointF(right_corner.x() - mouth_width * 0.24, top_ctrl_y),
+            right_corner,
+        )
+        path.cubicTo(
+            QPointF(right_corner.x() - mouth_width * 0.18, bottom_ctrl_y),
+            QPointF(left_corner.x() + mouth_width * 0.18, bottom_ctrl_y),
+            left_corner,
+        )
         path.closeSubpath()
 
-        gradient = QLinearGradient(
-            QPointF(left.x(), base_y - mouth_height * 0.6),
-            QPointF(right.x(), base_y + mouth_height * 0.8),
-        )
-        gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 120))
-        gradient.setColorAt(0.35, QColor(30, 18, 36, 230))
-        gradient.setColorAt(0.7, QColor(20, 12, 26, 240))
-        gradient.setColorAt(1.0, QColor(255, 80, 160, 140))
+        lip_gradient = QLinearGradient(left_corner, QPointF(right_corner.x(), bottom_ctrl_y))
+        lip_gradient.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 150))
+        lip_gradient.setColorAt(0.5, QColor(40, 14, 42, 235))
+        lip_gradient.setColorAt(1.0, QColor(160, 40, 110, 200))
 
-        painter.setBrush(gradient)
-        painter.setPen(QPen(QColor(255, 255, 255, 90), 2.2))
+        painter.setBrush(lip_gradient)
+        painter.setPen(QPen(QColor(255, 255, 255, 70), max(1.8, mouth_width * 0.01)))
         painter.drawPath(path)
 
-        if mouth_open > 0.2:
-            inner_path = QPainterPath(left)
-            inner_top = QPointF(center.x() + mouth_center_offset, base_y - mouth_height * (0.45 + mouth_curve * 0.5))
-            inner_bottom = QPointF(center.x() + mouth_center_offset, base_y + mouth_height * (0.85 + mouth_open))
-            inner_path.quadTo(inner_top, right)
-            inner_path.quadTo(inner_bottom, left)
+        if mouth_open > 0.05:
+            inner_left = QPointF(left_corner.x() + mouth_width * 0.12, base_y + mouth_height * 0.08)
+            inner_right = QPointF(right_corner.x() - mouth_width * 0.12, base_y + mouth_height * 0.08)
+            cavity_top_y = base_y - mouth_height * (0.05 + max(0.0, mouth_curve) * 0.2)
+            cavity_bottom_y = base_y + mouth_height * (0.55 + mouth_open * 1.2)
+
+            inner_path = QPainterPath(inner_left)
+            inner_path.cubicTo(
+                QPointF(inner_left.x() + mouth_width * 0.18, cavity_top_y),
+                QPointF(inner_right.x() - mouth_width * 0.18, cavity_top_y),
+                inner_right,
+            )
+            inner_path.cubicTo(
+                QPointF(inner_right.x() - mouth_width * 0.16, cavity_bottom_y),
+                QPointF(inner_left.x() + mouth_width * 0.16, cavity_bottom_y),
+                inner_left,
+            )
             inner_path.closeSubpath()
 
-            inner_gradient = QLinearGradient(inner_top, inner_bottom)
-            inner_gradient.setColorAt(0.0, QColor(255, 255, 255, 40))
-            inner_gradient.setColorAt(0.8, QColor(255, 120, 200, 90))
+            inner_gradient = QLinearGradient(
+                QPointF(inner_left.x(), cavity_top_y), QPointF(inner_right.x(), cavity_bottom_y)
+            )
+            inner_gradient.setColorAt(0.0, QColor(255, 210, 230, 80))
+            inner_gradient.setColorAt(0.5, QColor(70, 20, 60, 240))
+            inner_gradient.setColorAt(1.0, QColor(20, 8, 20, 255))
+
             painter.setBrush(inner_gradient)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPath(inner_path)
 
-        gloss_rect = QRectF(
-            center.x() - mouth_width * 0.35 + mouth_center_offset,
-            base_y - mouth_height * 0.25,
-            mouth_width * 0.7,
-            mouth_height * 0.4,
+        highlight_path = QPainterPath()
+        highlight_start = QPointF(left_corner.x() + mouth_width * 0.18, top_ctrl_y + mouth_height * 0.12)
+        highlight_end = QPointF(right_corner.x() - mouth_width * 0.18, top_ctrl_y + mouth_height * 0.12)
+        highlight_path.moveTo(highlight_start)
+        highlight_path.cubicTo(
+            QPointF(highlight_start.x() + mouth_width * 0.12, top_ctrl_y + mouth_height * 0.05),
+            QPointF(highlight_end.x() - mouth_width * 0.12, top_ctrl_y + mouth_height * 0.05),
+            highlight_end,
         )
-        gloss_path = QPainterPath()
-        gloss_path.addRoundedRect(gloss_rect, mouth_height * 0.3, mouth_height * 0.3)
-        painter.setBrush(QColor(255, 255, 255, 40))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPath(gloss_path)
 
-    def _draw_cheeks(
-        self,
-        painter: QPainter,
-        left_center: QPointF,
-        right_center: QPointF,
-        face_rect: QRectF,
-        accent: QColor,
-    ) -> None:
-        cheek_intensity = self._state["cheek_intensity"]
-        if cheek_intensity <= 0.01:
-            return
-
-        radius = face_rect.width() * 0.12
-        alpha = int(90 + 120 * cheek_intensity)
-        color = QColor(accent.red(), accent.green(), accent.blue(), alpha)
-
-        for center in (left_center, right_center):
-            offset = QPointF(0, face_rect.height() * 0.12)
-            painter.setBrush(color)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(center + offset, radius, radius * 0.75)
-
-    def _draw_overlay_highlights(self, painter: QPainter, face_rect: QRectF) -> None:
-        top_glow = QLinearGradient(face_rect.topLeft(), face_rect.topRight())
-        top_glow.setColorAt(0.0, QColor(255, 255, 255, 20))
-        top_glow.setColorAt(0.5, QColor(255, 255, 255, 60))
-        top_glow.setColorAt(1.0, QColor(255, 255, 255, 20))
-
-        painter.setBrush(top_glow)
-        painter.setPen(Qt.PenStyle.NoPen)
-        highlight_rect = QRectF(
-            face_rect.left() + face_rect.width() * 0.1,
-            face_rect.top() + face_rect.height() * 0.05,
-            face_rect.width() * 0.8,
-            face_rect.height() * 0.18,
-        )
-        painter.drawRoundedRect(highlight_rect, face_rect.width() * 0.2, face_rect.height() * 0.2)
-
-        bottom_glow = QLinearGradient(face_rect.bottomLeft(), face_rect.bottomRight())
-        bottom_glow.setColorAt(0.0, QColor(255, 255, 255, 12))
-        bottom_glow.setColorAt(0.5, QColor(255, 255, 255, 35))
-        bottom_glow.setColorAt(1.0, QColor(255, 255, 255, 12))
-
-        bottom_rect = QRectF(
-            face_rect.left() + face_rect.width() * 0.18,
-            face_rect.bottom() - face_rect.height() * 0.18,
-            face_rect.width() * 0.64,
-            face_rect.height() * 0.12,
-        )
-        painter.drawRoundedRect(bottom_rect, face_rect.width() * 0.15, face_rect.height() * 0.15)
+        painter.setPen(QPen(QColor(255, 255, 255, 110), mouth_height * 0.08))
+        painter.drawPath(highlight_path)
 
     # ------------------------------------------------------------------
     # Utilities
@@ -513,7 +459,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=1.0,
                 mouth_height=1.0,
                 iris_size=1.0,
-                cheek_intensity=0.1,
                 accent_color=(70, 200, 255),
             ),
             "happy": EmotionPreset(
@@ -527,7 +472,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=1.05,
                 mouth_height=1.2,
                 iris_size=1.05,
-                cheek_intensity=0.7,
                 accent_color=(90, 240, 210),
             ),
             "sad": EmotionPreset(
@@ -541,7 +485,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=0.85,
                 mouth_height=0.9,
                 iris_size=0.95,
-                cheek_intensity=0.25,
                 accent_color=(140, 120, 255),
             ),
             "surprised": EmotionPreset(
@@ -555,7 +498,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=0.95,
                 mouth_height=1.4,
                 iris_size=1.15,
-                cheek_intensity=0.4,
                 accent_color=(255, 200, 120),
             ),
             "sleepy": EmotionPreset(
@@ -569,7 +511,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=0.9,
                 mouth_height=0.7,
                 iris_size=0.9,
-                cheek_intensity=0.15,
                 accent_color=(120, 180, 255),
             ),
             "curious": EmotionPreset(
@@ -583,7 +524,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=1.0,
                 mouth_height=1.0,
                 iris_size=1.1,
-                cheek_intensity=0.5,
                 accent_color=(255, 120, 210),
             ),
             "excited": EmotionPreset(
@@ -597,7 +537,6 @@ class RoboticFaceWidget(QWidget):
                 mouth_width=1.1,
                 mouth_height=1.3,
                 iris_size=1.08,
-                cheek_intensity=0.85,
                 accent_color=(255, 140, 100),
             ),
         }
@@ -613,6 +552,5 @@ class RoboticFaceWidget(QWidget):
             "mouth_width": preset.mouth_width,
             "mouth_height": preset.mouth_height,
             "iris_size": preset.iris_size,
-            "cheek_intensity": preset.cheek_intensity,
             "accent_color": QColor(*preset.accent_color),
         }
