@@ -4,16 +4,16 @@ import logging
 import signal
 import sys
 import time
-from typing import Optional
+from typing import Optional, Sequence
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from robot_control import EmotionPolicy, FaceController, SerialReader
-from robot_control.sensor_data import SensorSample
+from robot_control.gyro_calibrator import GyroCalibrator
 from robotic_face_widget import RoboticFaceWidget
 from simulation_main import FaceTelemetryDisplay
-from telemetry_panel import TelemetryPanel
+from telemetry_panel import InfoPanel, TelemetryPanel
 
 try:  # Reuse the palette from the interactive demo when available.
     from app_palette import apply_dark_palette as apply_palette
@@ -24,12 +24,16 @@ LOGGER = logging.getLogger(__name__)
 
 
 class RobotMainWindow(QWidget):
-    def __init__(self, face: RoboticFaceWidget, telemetry: TelemetryPanel) -> None:
+    def __init__(
+        self,
+        face: RoboticFaceWidget,
+        overlays: Sequence[QWidget] | QWidget,
+    ) -> None:
         super().__init__()
         self.setWindowTitle("Axon Runtime")
         self._display = FaceTelemetryDisplay(
             face,
-            telemetry,
+            overlays,
             parent=self,
             fixed_size=None,
         )
@@ -52,11 +56,13 @@ class RobotRuntime(QWidget):
         telemetry: TelemetryPanel,
         poll_interval_ms: int = 40,
         parent: Optional[QWidget] = None,
+        calibrator: GyroCalibrator | None = None,
     ) -> None:
         super().__init__(parent)
         self._reader = reader
         self._controller = controller
         self._telemetry = telemetry
+        self._calibrator = calibrator or GyroCalibrator()
         self._timer = QTimer(self)
         self._timer.setInterval(poll_interval_ms)
         self._timer.timeout.connect(self._poll)
@@ -87,6 +93,7 @@ class RobotRuntime(QWidget):
             return
 
         self._missed_cycles = 0
+        self._calibrator.observe(sample)
         self._controller.apply_sample(sample)
         self._telemetry.update_sample(sample)
 
@@ -125,7 +132,8 @@ def main() -> int:
     face = RoboticFaceWidget()
     controller = FaceController(face, EmotionPolicy())
     telemetry = TelemetryPanel()
-    window = RobotMainWindow(face, telemetry)
+    info_panel = InfoPanel()
+    window = RobotMainWindow(face, (info_panel, telemetry))
 
     runtime = RobotRuntime(
         reader,

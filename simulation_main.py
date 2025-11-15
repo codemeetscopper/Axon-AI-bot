@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from app_palette import apply_dark_palette
 from robot_control.sensor_data import SensorSample
-from telemetry_panel import TelemetryPanel
+from telemetry_panel import InfoPanel, TelemetryPanel
 from robotic_face_widget import RoboticFaceWidget
 
 # Backwards compatibility for external imports expecting the old helper name.
@@ -33,19 +33,23 @@ _apply_dark_palette = apply_dark_palette
 
 
 class FaceTelemetryDisplay(QWidget):
-    """Composite widget that overlays telemetry on top of the face widget."""
+    """Composite widget that overlays telemetry/info controls on the face widget."""
 
     def __init__(
         self,
         face: RoboticFaceWidget,
-        telemetry: TelemetryPanel,
+        overlays: Sequence[QWidget] | QWidget,
         parent: QWidget | None = None,
         fixed_size: QSize | Sequence[int] | None = QSize(800, 480),
     ) -> None:
         super().__init__(parent)
         self._face = face
-        self._telemetry = telemetry
+        if isinstance(overlays, Sequence):
+            self._overlay_widgets = tuple(overlays)
+        else:
+            self._overlay_widgets = (overlays,)
         self._fixed_size = fixed_size
+        self._collapsible_panels: list[QWidget] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -90,10 +94,12 @@ class FaceTelemetryDisplay(QWidget):
         dock = QWidget(overlay)
         dock_layout = QHBoxLayout(dock)
         dock_layout.setContentsMargins(0, 0, 0, 0)
-        dock_layout.setSpacing(0)
-        dock_layout.addWidget(self._telemetry)
+        dock_layout.setSpacing(8)
         dock_layout.addStretch(1)
-        overlay_layout.addWidget(dock, 0, Qt.AlignmentFlag.AlignLeft)
+        for widget in self._overlay_widgets:
+            dock_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignRight)
+        overlay_layout.addWidget(dock, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        self._register_collapsible_panels()
         stack.addWidget(overlay)
 
         # Ensure the overlay paints above the face layer when the layout is in
@@ -117,6 +123,26 @@ class FaceTelemetryDisplay(QWidget):
             }
             """
         )
+
+    def _register_collapsible_panels(self) -> None:
+        self._collapsible_panels = []
+        for widget in self._overlay_widgets:
+            signal = getattr(widget, "collapsedChanged", None)
+            if signal is None:
+                continue
+            self._collapsible_panels.append(widget)
+            signal.connect(partial(self._handle_panel_toggle, widget))
+
+    def _handle_panel_toggle(self, source: QWidget, collapsed: bool) -> None:
+        if collapsed:
+            return
+        for panel in self._collapsible_panels:
+            if panel is source:
+                continue
+            collapse = getattr(panel, "collapse", None)
+            is_collapsed = getattr(panel, "is_collapsed", None)
+            if callable(collapse) and callable(is_collapsed) and not is_collapsed():
+                collapse()
 
 
 class ControlPanel(QWidget):
@@ -388,9 +414,9 @@ class MainWindow(QWidget):
 
         self.face = RoboticFaceWidget()
         self.telemetry = TelemetryPanel()
-        self.telemetry.expand()
+        self.info_panel = InfoPanel()
 
-        display = FaceTelemetryDisplay(self.face, self.telemetry)
+        display = FaceTelemetryDisplay(self.face, (self.info_panel, self.telemetry))
         layout.addWidget(display, 0, Qt.AlignmentFlag.AlignTop)
 
         panel = ControlPanel(self.face, self.telemetry)
