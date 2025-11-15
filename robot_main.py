@@ -47,7 +47,7 @@ class TelemetryPanel(QFrame):
         self.set_streaming(False)
 
     def _build_ui(self) -> None:
-        self.setFixedHeight(96)
+        self.setFixedHeight(72)
         self.setStyleSheet(
             "#telemetryPanel {"
             "background: rgba(6, 10, 24, 0.92);"
@@ -55,14 +55,14 @@ class TelemetryPanel(QFrame):
             "}"
             "#telemetryPanel QLabel {"
             "color: #e8f1ff;"
-            "font-size: 22px;"
+            "font-size: 18px;"
             "font-weight: 600;"
             "}"
         )
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(32, 18, 32, 18)
-        layout.setSpacing(28)
+        layout.setContentsMargins(24, 12, 24, 12)
+        layout.setSpacing(20)
 
         self._status_icon.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self._status_icon)
@@ -109,15 +109,17 @@ class RobotMainWindow(QWidget):
         face_frame = QFrame()
         face_frame.setFrameShape(QFrame.Shape.NoFrame)
         face_layout = QVBoxLayout(face_frame)
-        face_layout.setContentsMargins(48, 48, 48, 24)
+        face_layout.setContentsMargins(24, 24, 24, 12)
         face_layout.setSpacing(0)
         face_layout.addStretch(1)
         face_layout.addWidget(face, alignment=Qt.AlignmentFlag.AlignCenter)
         face_layout.addStretch(1)
         layout.addWidget(face_frame, 1)
+        layout.setStretchFactor(face_frame, 1)
 
         telemetry.setParent(self)
         layout.addWidget(telemetry, 0)
+        layout.setStretchFactor(telemetry, 0)
 
 
 class RobotRuntime(QWidget):

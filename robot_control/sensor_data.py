@@ -9,6 +9,14 @@ ROLL_CALIBRATION = 5.420720526107142
 PITCH_CALIBRATION = -12.253261345
 YAW_CALIBRATION = 166.39189556785712
 
+ROLL_DEADBAND = 0.6
+PITCH_DEADBAND = 0.6
+YAW_DEADBAND = 1.0
+
+REST_ROLL_THRESHOLD = 3.0
+REST_PITCH_THRESHOLD = 3.0
+REST_YAW_THRESHOLD = 4.5
+
 
 @dataclass(slots=True)
 class SensorSample:
@@ -55,9 +63,9 @@ class SensorSample:
         """Return a mapping compatible with :meth:`RoboticFaceWidget.set_orientation`."""
 
         return {
-            "yaw": self.calibrated_yaw,
-            "pitch": self.calibrated_pitch,
-            "roll": self.calibrated_roll,
+            "yaw": _apply_deadband(self.calibrated_yaw, YAW_DEADBAND),
+            "pitch": _apply_deadband(self.calibrated_pitch, PITCH_DEADBAND),
+            "roll": _apply_deadband(self.calibrated_roll, ROLL_DEADBAND),
         }
 
     @property
@@ -90,6 +98,20 @@ class SensorSample:
             "voltage_v": self.voltage_v,
         }
 
+    def is_resting(
+        self,
+        roll_threshold: float = REST_ROLL_THRESHOLD,
+        pitch_threshold: float = REST_PITCH_THRESHOLD,
+        yaw_threshold: float = REST_YAW_THRESHOLD,
+    ) -> bool:
+        """Return ``True`` when the robot is within the resting orientation band."""
+
+        return (
+            abs(self.calibrated_roll) <= roll_threshold
+            and abs(self.calibrated_pitch) <= pitch_threshold
+            and abs(self.calibrated_yaw) <= yaw_threshold
+        )
+
 
 def _wrap_angle(angle: float) -> float:
     """Wrap *angle* to the ``[-180, 180]`` range."""
@@ -99,3 +121,9 @@ def _wrap_angle(angle: float) -> float:
     if wrapped == -180.0 and angle > 0:
         return 180.0
     return wrapped
+
+
+def _apply_deadband(value: float, threshold: float) -> float:
+    """Clamp tiny variations around zero to zero to steady the face."""
+
+    return 0.0 if abs(value) < threshold else value
