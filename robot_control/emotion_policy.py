@@ -10,11 +10,11 @@ class EmotionPolicy:
     """Select an emotion based on gyroscope readings."""
 
     default_emotion: str = "happy"
-    alert_emotion: str = "fearful"
-    tilt_emotion: str = "curious"
+    alert_emotion: str = "surprised"
+    tilt_emotion: str = "sad"
     roll_threshold: float = 25.0
     pitch_threshold: float = 20.0
-    yaw_threshold: float = 35.0
+    yaw_threshold: float = 15.0
 
     def choose(self, sample: SensorSample, current: str | None = None) -> str:
         """Return the emotion that should be shown for the given sample."""
