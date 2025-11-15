@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+import time
 from typing import Callable, Optional
 
 from PySide6.QtCore import QPointF, QRectF, QSize, QTimer, Qt, Signal
@@ -492,6 +493,7 @@ def _configure_logging(level: str) -> None:
 
 
 def main() -> int:
+    time.sleep(5)
     _configure_logging(DEFAULT_LOG_LEVEL)
 
     try:
