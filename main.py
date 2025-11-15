@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpacerItem,
     QSizePolicy,
+    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -31,8 +32,8 @@ from robotic_face_widget import RoboticFaceWidget
 _apply_dark_palette = apply_dark_palette
 
 
-class RobotDisplay(QFrame):
-    """Composite widget that mimics the robot's screen."""
+class RobotScreen(QWidget):
+    """Widget that mirrors the robot's 800x480 display with telemetry overlay."""
 
     def __init__(
         self,
@@ -46,46 +47,54 @@ class RobotDisplay(QFrame):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        self.setObjectName("robotDisplay")
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setObjectName("robotScreen")
+        self.setFixedSize(800, 480)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        stack = QStackedLayout(self)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(0)
+        stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
 
-        face_holder = QFrame()
-        face_holder.setObjectName("robotDisplayFace")
-        face_holder.setFrameShape(QFrame.Shape.NoFrame)
-        face_layout = QVBoxLayout(face_holder)
+        face_layer = QFrame(self)
+        face_layer.setObjectName("robotScreenFace")
+        face_layout = QVBoxLayout(face_layer)
         face_layout.setContentsMargins(0, 0, 0, 0)
         face_layout.setSpacing(0)
-        face_layout.addWidget(self._face, 1)
-        layout.addWidget(face_holder, 1)
+        self._face.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        face_layout.addWidget(self._face)
+        stack.addWidget(face_layer)
 
-        telemetry_holder = QWidget()
-        telemetry_holder.setObjectName("robotDisplayTelemetry")
-        telemetry_layout = QHBoxLayout(telemetry_holder)
-        telemetry_layout.setContentsMargins(0, 0, 0, 0)
-        telemetry_layout.setSpacing(0)
-        telemetry_layout.addWidget(self._telemetry, 1)
-        layout.addWidget(telemetry_holder, 0)
+        overlay = QWidget(self)
+        overlay.setObjectName("robotScreenOverlay")
+        overlay_layout = QVBoxLayout(overlay)
+        overlay_layout.setContentsMargins(24, 24, 24, 24)
+        overlay_layout.setSpacing(0)
+        overlay_layout.addStretch(1)
+
+        dock = QWidget(overlay)
+        dock_layout = QHBoxLayout(dock)
+        dock_layout.setContentsMargins(0, 0, 0, 0)
+        dock_layout.setSpacing(0)
+        dock_layout.addWidget(self._telemetry)
+        dock_layout.addStretch(1)
+        overlay_layout.addWidget(dock, 0, Qt.AlignmentFlag.AlignLeft)
+        stack.addWidget(overlay)
 
         self.setStyleSheet(
             """
-            #robotDisplay {
-                background-color: rgba(6, 10, 24, 0.82);
-                border-radius: 28px;
-                border: 2px solid rgba(78, 112, 168, 0.35);
+            #robotScreen {
+                background-color: #040914;
+                border-radius: 20px;
+                border: 1px solid rgba(68, 88, 128, 0.45);
             }
-            #robotDisplayFace {
-                background-color: rgba(2, 5, 15, 0.9);
-                border-radius: 22px;
+            #robotScreenFace > QWidget {
+                border-radius: 20px;
             }
-            #robotDisplayFace > QWidget {
-                border-radius: 22px;
-            }
-            #robotDisplayTelemetry {
-                padding-top: 6px;
+            #robotScreenOverlay {
+                background: transparent;
             }
             """
         )
@@ -362,8 +371,8 @@ class MainWindow(QWidget):
         self.telemetry = TelemetryPanel()
         self.telemetry.expand()
 
-        display = RobotDisplay(self.face, self.telemetry)
-        layout.addWidget(display, 3)
+        display = RobotScreen(self.face, self.telemetry)
+        layout.addWidget(display, 0, Qt.AlignmentFlag.AlignTop)
 
         panel = ControlPanel(self.face, self.telemetry)
         panel.setFixedWidth(280)
@@ -380,7 +389,7 @@ def main() -> int:
     apply_dark_palette(app)
 
     window = MainWindow()
-    window.resize(1100, 680)
+    window.resize(1220, 620)
     window.show()
     return app.exec()
 

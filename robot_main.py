@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -54,6 +55,7 @@ class TelemetryPanel(QFrame):
         self._formatters: dict[str, Formatter] = {}
         self._toggle_button: Optional[QPushButton] = None
         self._content_frame: Optional[QFrame] = None
+        self._layout: Optional[QHBoxLayout] = None
         self._collapsed = False
         self._streaming = False
         self.setObjectName("telemetryPanel")
@@ -62,15 +64,15 @@ class TelemetryPanel(QFrame):
         self._set_collapsed(True)
 
     def _build_ui(self) -> None:
-        self.setFixedHeight(38)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             "#telemetryPanel {"
-            "background: rgba(6, 10, 24, 0.05);"
-            "border-top: 1px solid rgba(120, 150, 220, 0.18);"
+            "background-color: rgba(8, 14, 34, 0.05);"
+            "border-radius: 18px;"
+            "border: none;"
             "}"
             "#telemetryPanel[collapsed=\"true\"] {"
-            "background: transparent;"
-            "border-top: none;"
+            "background-color: transparent;"
             "}"
             "#telemetryPanel QLabel {"
             "color: #e8f1ff;"
@@ -80,8 +82,9 @@ class TelemetryPanel(QFrame):
         )
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(10)
+        self._layout = layout
 
         self._toggle_button = QPushButton()
         self._toggle_button.setObjectName("telemetryToggle")
@@ -96,7 +99,7 @@ class TelemetryPanel(QFrame):
         content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(10)
+        content_layout.setSpacing(12)
         layout.addWidget(content, 1)
 
         self._content_frame = content
@@ -125,7 +128,7 @@ class TelemetryPanel(QFrame):
                 separator.setFixedSize(1, 18)
                 separator.setStyleSheet(
                     "QFrame#telemetrySeparator {"
-                    "background-color: rgba(232, 241, 255, 0.18);"
+                    "background-color: rgba(232, 241, 255, 0.12);"
                     "border: none;"
                     "}"
                 )
@@ -289,12 +292,16 @@ class TelemetryPanel(QFrame):
             self._content_frame.setVisible(False)
             self._content_frame.setMaximumWidth(0)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            self.setMaximumWidth(self._toggle_button.sizeHint().width() + 16)
+            self.setMaximumWidth(self._toggle_button.sizeHint().width() + 12)
+            if self._layout is not None:
+                self._layout.setContentsMargins(0, 0, 0, 0)
         else:
             self._content_frame.setVisible(True)
             self._content_frame.setMaximumWidth(16777215)
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.setMaximumWidth(16777215)
+            if self._layout is not None:
+                self._layout.setContentsMargins(14, 10, 14, 10)
 
         self.setProperty("collapsed", collapsed)
         style = self.style()
@@ -316,16 +323,16 @@ class TelemetryPanel(QFrame):
         if self._toggle_button is None:
             return
         accent = "#2DD881" if self._streaming else "#9AA2B8"
-        hover_bg = "rgba(45, 216, 129, 0.18)" if self._streaming else "rgba(154, 162, 184, 0.18)"
-        pressed_bg = "rgba(45, 216, 129, 0.28)" if self._streaming else "rgba(154, 162, 184, 0.28)"
-        border_color = "rgba(45, 216, 129, 0.55)" if self._streaming else "rgba(154, 162, 184, 0.45)"
+        base_bg = "rgba(45, 216, 129, 0.16)" if self._streaming else "rgba(154, 162, 184, 0.16)"
+        hover_bg = "rgba(45, 216, 129, 0.26)" if self._streaming else "rgba(154, 162, 184, 0.26)"
+        pressed_bg = "rgba(45, 216, 129, 0.34)" if self._streaming else "rgba(154, 162, 184, 0.34)"
         self._toggle_button.setStyleSheet(
             "#telemetryToggle {"
-            "background-color: rgba(8, 12, 26, 0.32);"
-            f"border: 1px solid {border_color};"
-            "border-radius: 14px;"
+            f"background-color: {base_bg};"
+            "border: none;"
+            "border-radius: 16px;"
             f"color: {accent};"
-            "padding: 2px;"
+            "padding: 4px;"
             "}"
             "#telemetryToggle:hover {"
             f"background-color: {hover_bg};"
@@ -366,33 +373,32 @@ class RobotMainWindow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        face.setParent(self)
+        screen = QWidget(self)
+        stack = QStackedLayout(screen)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(0)
+        stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+
+        face.setParent(screen)
         face.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(face, 1)
+        stack.addWidget(face)
 
-        telemetry_host = QWidget(self)
-        telemetry_host.setObjectName("telemetryHost")
-        telemetry_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        bar_layout = QHBoxLayout(telemetry_host)
-        bar_layout.setContentsMargins(0, 0, 0, 0)
-        bar_layout.setSpacing(0)
-        bar_layout.addWidget(telemetry)
-        bar_layout.addStretch(1)
+        overlay = QWidget(screen)
+        overlay_layout = QVBoxLayout(overlay)
+        overlay_layout.setContentsMargins(24, 24, 24, 24)
+        overlay_layout.setSpacing(0)
+        overlay_layout.addStretch(1)
 
-        layout.addWidget(telemetry_host, 0)
+        dock = QWidget(overlay)
+        dock_layout = QHBoxLayout(dock)
+        dock_layout.setContentsMargins(0, 0, 0, 0)
+        dock_layout.setSpacing(0)
+        dock_layout.addWidget(telemetry)
+        dock_layout.addStretch(1)
+        overlay_layout.addWidget(dock, 0, Qt.AlignmentFlag.AlignLeft)
 
-        def update_alignment(collapsed: bool) -> None:
-            alignment = (
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                if collapsed
-                else Qt.AlignmentFlag.AlignVCenter
-            )
-            bar_layout.setAlignment(telemetry, alignment)
-            bar_layout.setStretch(0, 0 if collapsed else 1)
-            bar_layout.setStretch(1, 1 if collapsed else 0)
-
-        telemetry.collapsedChanged.connect(update_alignment)
-        update_alignment(telemetry.is_collapsed())
+        stack.addWidget(overlay)
+        layout.addWidget(screen)
 
 
 class RobotRuntime(QWidget):
