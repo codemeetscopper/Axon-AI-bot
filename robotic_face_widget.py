@@ -172,16 +172,16 @@ class RoboticFaceWidget(QWidget):
         painter.translate(-center)
 
         # Head shadow
-        shadow_rect = QRectF(face_rect)
-        shadow_rect.translate(0, face_rect.height() * 0.04)
-        shadow = QLinearGradient(shadow_rect.topLeft(), shadow_rect.bottomLeft())
-        shadow.setColorAt(0.0, QColor(0, 0, 0, 0))
-        shadow.setColorAt(1.0, QColor(0, 0, 0, 80))
-        painter.setBrush(shadow)
-        painter.setPen(Qt.PenStyle.NoPen)
-        shadow_path = QPainterPath()
-        shadow_path.addEllipse(shadow_rect)
-        painter.drawPath(shadow_path)
+        # shadow_rect = QRectF(face_rect)
+        # shadow_rect.translate(0, face_rect.height() * 0.04)
+        # shadow = QLinearGradient(shadow_rect.topLeft(), shadow_rect.bottomLeft())
+        # shadow.setColorAt(0.0, QColor(0, 0, 0, 0))
+        # shadow.setColorAt(1.0, QColor(0, 0, 0, 80))
+        # painter.setBrush(shadow)
+        # painter.setPen(Qt.PenStyle.NoPen)
+        # shadow_path = QPainterPath()
+        # shadow_path.addEllipse(shadow_rect)
+        # painter.drawPath(shadow_path)
 
         head_gradient = QLinearGradient(face_rect.topLeft(), face_rect.bottomLeft())
         head_gradient.setColorAt(0.0, QColor(40, 48, 82))
@@ -196,13 +196,13 @@ class RoboticFaceWidget(QWidget):
         accent_color: QColor = self._state["accent_color"]
 
         # Glowing halo
-        halo_gradient = QLinearGradient(center.x(), face_rect.top(), center.x(), face_rect.bottom())
-        halo_gradient.setColorAt(0.0, QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 90))
-        halo_gradient.setColorAt(0.6, QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 10))
-        halo_gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
-        painter.setBrush(halo_gradient)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(face_rect.adjusted(-20, -20, 20, 20), face_rect.width() * 0.32, face_rect.height() * 0.32)
+        # halo_gradient = QLinearGradient(center.x(), face_rect.top(), center.x(), face_rect.bottom())
+        # halo_gradient.setColorAt(0.0, QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 90))
+        # halo_gradient.setColorAt(0.6, QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 10))
+        # halo_gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
+        # painter.setBrush(halo_gradient)
+        # painter.setPen(Qt.PenStyle.NoPen)
+        # painter.drawRoundedRect(face_rect.adjusted(-20, -20, 20, 20), face_rect.width() * 0.32, face_rect.height() * 0.32)
 
         eye_height = face_rect.height() * 0.24
         eye_width = face_rect.width() * 0.26
@@ -252,11 +252,11 @@ class RoboticFaceWidget(QWidget):
 
         self._draw_brows(painter, left_eye_center, right_eye_center, eye_width, brow_raise, brow_tilt, accent_color)
         self._draw_mouth(painter, center, face_rect, accent_color)
-        self._draw_cheeks(painter, left_eye_center, right_eye_center, face_rect, accent_color)
+        # self._draw_cheeks(painter, left_eye_center, right_eye_center, face_rect, accent_color)
 
         painter.restore()
 
-        self._draw_overlay_highlights(painter, face_rect)
+        # self._draw_overlay_highlights(painter, face_rect)
 
     # ------------------------------------------------------------------
     # Feature drawing helpers
