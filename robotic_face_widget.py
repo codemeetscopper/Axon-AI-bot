@@ -412,7 +412,8 @@ class RoboticFaceWidget(QWidget):
 
         painter.save()
 
-        if open_amount > face_rect.height() * 0.003:
+        side_threshold = face_rect.height() * 0.003
+        if open_amount > side_threshold:
             fill_path = QPainterPath(left_corner)
             fill_path.quadTo(top_control, right_corner)
             fill_path.lineTo(lower_right)
@@ -440,12 +441,35 @@ class RoboticFaceWidget(QWidget):
         painter.setPen(QPen(pen_color, stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawPath(top_path)
 
-        if open_amount > face_rect.height() * 0.003:
+        if open_amount > side_threshold:
             lower_path = QPainterPath(lower_left)
             lower_path.quadTo(bottom_control, lower_right)
             subtle_pen = QPen(pen_color.lighter(120), stroke_width * 0.85, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
             painter.setPen(subtle_pen)
             painter.drawPath(lower_path)
+
+            side_pen = QPen(pen_color, stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            painter.setPen(side_pen)
+
+            left_side = QPainterPath(left_corner)
+            left_side.quadTo(
+                QPointF(
+                    left_corner.x() - face_rect.width() * 0.01,
+                    (left_corner.y() + lower_left.y()) * 0.5 + face_rect.height() * 0.01,
+                ),
+                lower_left,
+            )
+            painter.drawPath(left_side)
+
+            right_side = QPainterPath(right_corner)
+            right_side.quadTo(
+                QPointF(
+                    right_corner.x() + face_rect.width() * 0.01,
+                    (right_corner.y() + lower_right.y()) * 0.5 + face_rect.height() * 0.01,
+                ),
+                lower_right,
+            )
+            painter.drawPath(right_side)
 
         painter.restore()
 
@@ -544,6 +568,71 @@ class RoboticFaceWidget(QWidget):
                 mouth_height=1.3,
                 iris_size=1.08,
                 accent_color=(255, 140, 100),
+            ),
+            "angry": EmotionPreset(
+                name="angry",
+                eye_openness=0.7,
+                eye_curve=-0.55,
+                brow_raise=-0.45,
+                brow_tilt=0.55,
+                mouth_curve=-0.4,
+                mouth_open=0.2,
+                mouth_width=0.95,
+                mouth_height=0.85,
+                iris_size=0.92,
+                accent_color=(255, 90, 90),
+            ),
+            "fearful": EmotionPreset(
+                name="fearful",
+                eye_openness=1.5,
+                eye_curve=-0.1,
+                brow_raise=0.35,
+                brow_tilt=0.25,
+                mouth_curve=-0.1,
+                mouth_open=0.85,
+                mouth_width=0.9,
+                mouth_height=1.35,
+                iris_size=1.12,
+                accent_color=(255, 220, 160),
+            ),
+            "disgusted": EmotionPreset(
+                name="disgusted",
+                eye_openness=0.75,
+                eye_curve=-0.25,
+                brow_raise=-0.35,
+                brow_tilt=-0.45,
+                mouth_curve=-0.2,
+                mouth_open=0.12,
+                mouth_width=0.88,
+                mouth_height=0.8,
+                iris_size=0.9,
+                accent_color=(140, 220, 110),
+            ),
+            "smirk": EmotionPreset(
+                name="smirk",
+                eye_openness=0.95,
+                eye_curve=0.1,
+                brow_raise=0.05,
+                brow_tilt=0.5,
+                mouth_curve=0.55,
+                mouth_open=0.12,
+                mouth_width=1.02,
+                mouth_height=0.95,
+                iris_size=1.0,
+                accent_color=(255, 170, 200),
+            ),
+            "proud": EmotionPreset(
+                name="proud",
+                eye_openness=1.05,
+                eye_curve=0.25,
+                brow_raise=0.28,
+                brow_tilt=-0.15,
+                mouth_curve=0.65,
+                mouth_open=0.18,
+                mouth_width=1.08,
+                mouth_height=1.05,
+                iris_size=1.02,
+                accent_color=(255, 200, 150),
             ),
         }
 
