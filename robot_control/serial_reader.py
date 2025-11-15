@@ -95,6 +95,10 @@ class SerialReader:
                     LOGGER.debug("Failed to parse payload %s: %s", text, exc)
                     continue
 
+                if not sample.is_robot_frame:
+                    LOGGER.debug("Skipping non-robot frame: %s", text)
+                    continue
+
                 with self._lock:
                     self._latest = sample
         finally:

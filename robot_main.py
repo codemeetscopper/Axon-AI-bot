@@ -3,19 +3,10 @@ from __future__ import annotations
 import logging
 import signal
 import sys
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtWidgets import (
-    QApplication,
-    QFrame,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QSpacerItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from robot_control import EmotionPolicy, FaceController, SerialReader
 from robot_control.sensor_data import SensorSample
@@ -29,75 +20,79 @@ except Exception:  # pragma: no cover - best effort reuse
 LOGGER = logging.getLogger(__name__)
 
 
-class TelemetryPanel(QWidget):
+Formatter = Callable[[float], str]
+
+
+class TelemetryPanel(QFrame):
     """Display the latest telemetry sample."""
 
-    _FIELD_TITLES = {
-        "timestamp_ms": "Timestamp",
-        "left_speed": "Left motor",
-        "right_speed": "Right motor",
-        "roll": "Roll",
-        "pitch": "Pitch",
-        "yaw": "Yaw",
-        "temperature_c": "Temp",
-        "voltage_v": "Voltage",
-    }
+    _FIELDS: tuple[tuple[str, str, Formatter], ...] = (
+        ("left_speed", "⬅️", lambda value: f"{value:.0f}"),
+        ("right_speed", "➡️", lambda value: f"{value:.0f}"),
+        ("roll", "🌀", lambda value: f"{value:+.1f}°"),
+        ("pitch", "↕️", lambda value: f"{value:+.1f}°"),
+        ("yaw", "🧭", lambda value: f"{value:+.1f}°"),
+        ("temperature_c", "🌡️", lambda value: f"{value:.1f}°C"),
+        ("voltage_v", "🔋", lambda value: f"{value:.2f}V"),
+    )
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._labels: dict[str, QLabel] = {}
-        self._status = QLabel("Waiting for data…")
+        self._formatters: dict[str, Formatter] = {}
+        self._icons: dict[str, str] = {}
+        self._status_icon = QLabel("⚫")
+        self.setObjectName("telemetryPanel")
         self._build_ui()
+        self.set_streaming(False)
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self.setFixedHeight(96)
+        self.setStyleSheet(
+            "#telemetryPanel {"
+            "background: rgba(6, 10, 24, 0.92);"
+            "border-top: 1px solid rgba(120, 150, 220, 0.25);"
+            "}"
+            "#telemetryPanel QLabel {"
+            "color: #e8f1ff;"
+            "font-size: 22px;"
+            "font-weight: 600;"
+            "}"
+        )
 
-        title = QLabel("Axon Telemetry")
-        title.setStyleSheet("font-size: 18px; font-weight: 600;")
-        layout.addWidget(title)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(32, 18, 32, 18)
+        layout.setSpacing(28)
 
-        self._status.setStyleSheet("color: rgba(255,255,255,0.7);")
-        layout.addWidget(self._status)
+        self._status_icon.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self._status_icon)
 
-        grid = QGridLayout()
-        grid.setVerticalSpacing(10)
-        grid.setHorizontalSpacing(12)
-        layout.addLayout(grid)
+        for field, icon, formatter in self._FIELDS:
+            label = QLabel(f"{icon} --")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setObjectName(f"telemetry_{field}")
+            layout.addWidget(label)
+            self._labels[field] = label
+            self._formatters[field] = formatter
+            self._icons[field] = icon
 
-        for row, (field, label_text) in enumerate(self._FIELD_TITLES.items()):
-            label = QLabel(label_text)
-            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            label.setStyleSheet("font-weight: 500;")
-            grid.addWidget(label, row, 0)
-
-            value = QLabel("--")
-            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            value.setObjectName(f"telemetry_{field}")
-            grid.addWidget(value, row, 1)
-            self._labels[field] = value
-
-        layout.addSpacerItem(QSpacerItem(20, 20))
         layout.addStretch(1)
 
     def update_sample(self, sample: SensorSample) -> None:
         values = sample.as_dict()
-        values["roll"] = f"{values['roll']:+.1f}°"
-        values["pitch"] = f"{values['pitch']:+.1f}°"
-        values["yaw"] = f"{values['yaw']:+.1f}°"
-        values["temperature_c"] = f"{values['temperature_c']:.1f} °C"
-        values["voltage_v"] = f"{values['voltage_v']:.2f} V"
-        values["left_speed"] = f"{values['left_speed']:.0f}"
-        values["right_speed"] = f"{values['right_speed']:.0f}"
         for field, label in self._labels.items():
-            label.setText(str(values.get(field, "--")))
+            value = values.get(field)
+            formatter = self._formatters.get(field, lambda v: str(v))
+            icon = self._icons.get(field, "")
+            if value is None:
+                label.setText(f"{icon} --")
+            else:
+                label.setText(f"{icon} {formatter(value)}")
         self.set_streaming(True)
 
     def set_streaming(self, streaming: bool) -> None:
-        self._status.setText("Streaming data" if streaming else "Waiting for data…")
-        self._status.setStyleSheet(
-            "color: rgba(120,255,200,0.9);" if streaming else "color: rgba(255,255,255,0.7);"
-        )
+        self._status_icon.setText("🟢" if streaming else "⚫")
+        self._status_icon.setToolTip("Streaming" if streaming else "Idle")
 
 
 class RobotMainWindow(QWidget):
@@ -107,20 +102,22 @@ class RobotMainWindow(QWidget):
         self._build_ui(face, telemetry)
 
     def _build_ui(self, face: RoboticFaceWidget, telemetry: TelemetryPanel) -> None:
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(24)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         face_frame = QFrame()
         face_frame.setFrameShape(QFrame.Shape.NoFrame)
         face_layout = QVBoxLayout(face_frame)
-        face_layout.setContentsMargins(0, 0, 0, 0)
-        face_layout.addWidget(face)
-        layout.addWidget(face_frame, 4)
+        face_layout.setContentsMargins(48, 48, 48, 24)
+        face_layout.setSpacing(0)
+        face_layout.addStretch(1)
+        face_layout.addWidget(face, alignment=Qt.AlignmentFlag.AlignCenter)
+        face_layout.addStretch(1)
+        layout.addWidget(face_frame, 1)
 
-        telemetry.setFixedWidth(260)
-        telemetry.setObjectName("telemetryPanel")
-        layout.addWidget(telemetry, 1)
+        telemetry.setParent(self)
+        layout.addWidget(telemetry, 0)
 
 
 class RobotRuntime(QWidget):
@@ -218,8 +215,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, lambda *_: app.quit())
 
     runtime.start()
-    window.resize(960, 600)
-    window.show()
+    window.showFullScreen()
 
     try:
         return app.exec()

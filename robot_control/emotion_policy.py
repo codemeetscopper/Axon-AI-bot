@@ -19,9 +19,12 @@ class EmotionPolicy:
     def choose(self, sample: SensorSample, current: str | None = None) -> str:
         """Return the emotion that should be shown for the given sample."""
 
-        if abs(sample.pitch) > self.pitch_threshold or abs(sample.roll) > self.roll_threshold:
+        if (
+            abs(sample.calibrated_pitch) > self.pitch_threshold
+            or abs(sample.calibrated_roll) > self.roll_threshold
+        ):
             return self.alert_emotion
-        if abs(sample.yaw) > self.yaw_threshold:
+        if abs(sample.calibrated_yaw) > self.yaw_threshold:
             return self.tilt_emotion
         if current in {self.alert_emotion, self.tilt_emotion}:
             return self.default_emotion
