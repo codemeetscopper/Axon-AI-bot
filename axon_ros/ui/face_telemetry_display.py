@@ -152,7 +152,7 @@ class FaceTelemetryDisplay(QWidget):
             #robotScreen {
                 background-color: #040914;
                 border-radius: 20px;
-                border: 1px solid rgba(68, 88, 128, 0.45);
+                border: 0px solid rgba(68, 88, 128, 0.45);
             }
             #robotScreenFace > QWidget {
                 border-radius: 20px;

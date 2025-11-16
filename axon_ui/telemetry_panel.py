@@ -114,7 +114,13 @@ class TelemetryPanel(CollapsiblePanel):
             content_layout.addWidget(cell, 1)  # ⚡ equal spacing columns
 
             # Optional slim separator
-            if index < len(self._FIELDS):
+            if index < len(self._FIELDS) :
+                sep = QFrame()
+                sep.setFixedWidth(1)
+                sep.setStyleSheet("background-color: rgba(232,241,255,0.10);")
+                content_layout.addWidget(sep)
+
+            if index == len(self._FIELDS) - 1:
                 sep = QFrame()
                 sep.setFixedWidth(1)
                 sep.setStyleSheet("background-color: rgba(232,241,255,0.10);")

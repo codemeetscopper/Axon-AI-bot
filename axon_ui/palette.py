@@ -26,7 +26,7 @@ def apply_dark_palette(app: QApplication) -> None:
         """
         QWidget { color: white; }
         QComboBox, QSlider, QPushButton { font-size: 14px; }
-        QPushButton { background-color: rgba(90, 240, 210, 0.2); border: 1px solid rgba(90,240,210,0.4); padding: 8px 12px; border-radius: 6px; }
+        QPushButton { background-color: rgba(90, 240, 210, 0.2); border: 0px solid rgba(90,240,210,0.4); padding: 8px 12px; border-radius: 6px; }
         QPushButton:hover { background-color: rgba(90, 240, 210, 0.32); }
         QPushButton:pressed { background-color: rgba(90, 240, 210, 0.45); }
         QComboBox { background-color: rgba(26, 28, 45, 0.9); border: 1px solid rgba(90,240,210,0.5); padding: 6px; border-radius: 6px; }

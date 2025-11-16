@@ -160,14 +160,20 @@ class InfoPanel(CollapsiblePanel):
     def _apply_toggle_palette(self) -> None:  # pragma: no cover - Qt painting
         if self._toggle_button is None:
             return
+        palette = (
+            "#infoToggle {"
+            "background-color: transparent;"
+            "border: none;"
+            "padding: 0px;"
+            "}"
+            "#infoToggle:hover {"
+            "background-color: transparent;"
+            "}"
+        )
         if self._collapsed:
-            self._toggle_button.setStyleSheet(
-                "background-color: rgba(255, 255, 255, 0.08); border-radius: 13px;"
-            )
+            self._toggle_button.setStyleSheet(palette)
         else:
-            self._toggle_button.setStyleSheet(
-                "background-color: rgba(255, 255, 255, 0.18); border-radius: 13px;"
-            )
+            self._toggle_button.setStyleSheet(palette)
 
     def _update_toggle_icon(self) -> None:  # pragma: no cover - Qt painting
         if self._toggle_button is None:
