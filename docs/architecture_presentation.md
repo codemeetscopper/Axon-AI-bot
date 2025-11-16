@@ -11,7 +11,7 @@
 - `axon_ui.telemetry.InfoPanel`: metadata card with fullscreen toggle signal.
 - `robot_control.SerialReader`: pulls `SensorSample` objects from UART.
 - `robot_control.serial_command_server.SerialCommandServer`: re-shares the UART
-  link over TCP so remote tools can issue manual commands.
+  link over TCP so remote tools can issue manual commands and stream telemetry.
 - `robot_control.GyroCalibrator`: learns gyro offsets after 3 s of stability.
 - `robot_control.FaceController` + `EmotionPolicy`: converts normalized motion into mouth/eye poses.
 
