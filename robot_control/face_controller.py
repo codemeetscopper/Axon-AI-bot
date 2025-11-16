@@ -25,7 +25,7 @@ class FaceController(QObject):
         self._policy = policy or EmotionPolicy()
         self._current_emotion: str | None = self._policy.default_emotion
         self._steady_start: float | None = None
-        self._rest_delay = 5.0
+        self._rest_delay = 10.0
         self._sleep_emotion = "sleepy"
         self._sleeping = False
         self._previous_sample: SensorSample | None = None
