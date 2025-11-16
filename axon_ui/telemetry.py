@@ -218,8 +218,6 @@ class TelemetryPanel(CollapsiblePanel):
                 content_layout.addWidget(separator)
                 content_layout.setStretch(content_layout.count() - 1, 0)
 
-        content_layout.addStretch(1)
-
         self._apply_toggle_palette()
         self._update_toggle_icon()
 

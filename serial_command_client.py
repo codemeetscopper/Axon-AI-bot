@@ -4,14 +4,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from dataclasses import dataclass
 from typing import Iterable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QTextCursor
-from PySide6.QtNetwork import QAbstractSocket, QTcpSocket
+from PySide6.QtNetwork import QAbstractSocket
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -26,6 +25,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from axon_ui.bridge_client import SerialBridgeConnection
 
 DEFAULT_PORT = 8765
 
@@ -113,11 +114,11 @@ class SerialBridgeClient(QMainWindow):
     def __init__(self, *, host: str, port: int) -> None:
         super().__init__()
         self.setWindowTitle("Axon Serial Bridge Client")
-        self._socket = QTcpSocket(self)
-        self._socket.readyRead.connect(self._handle_ready_read)
-        self._socket.errorOccurred.connect(self._handle_error)
-        self._socket.stateChanged.connect(self._handle_state_changed)
-        self._buffer = ""
+        self._connection = SerialBridgeConnection(self)
+        self._connection.telemetryReceived.connect(self._handle_telemetry)
+        self._connection.lineReceived.connect(self._handle_line)
+        self._connection.stateChanged.connect(self._handle_state_changed)
+        self._connection.errorOccurred.connect(self._handle_error)
 
         central = QWidget(self)
         self.setCentralWidget(central)
@@ -187,13 +188,17 @@ class SerialBridgeClient(QMainWindow):
     # Socket handlers
     # ------------------------------------------------------------------
     def _toggle_connection(self) -> None:
-        if self._socket.state() in (QAbstractSocket.SocketState.ConnectingState, QAbstractSocket.SocketState.ConnectedState):
-            self._socket.abort()
+        state = self._connection.state()
+        if state in (
+            QAbstractSocket.SocketState.ConnectingState,
+            QAbstractSocket.SocketState.ConnectedState,
+        ):
+            self._connection.disconnect()
             return
-        host = self._host_input.text().strip() or "192.168.1.169"
+        host = self._host_input.text().strip() or "127.0.0.1"
         port = int(self._port_input.value())
         self._append_log(f"Connecting to {host}:{port}...")
-        self._socket.connectToHost(host, port)
+        self._connection.connect_to(host, port)
         self._update_ui_state()
 
     def _handle_state_changed(self, state: QAbstractSocket.SocketState) -> None:
@@ -203,28 +208,26 @@ class SerialBridgeClient(QMainWindow):
             self._append_log("Disconnected from bridge.")
         self._update_ui_state()
 
-    def _handle_error(self, error: QAbstractSocket.SocketError) -> None:  # pragma: no cover - Qt callback
-        if error == QAbstractSocket.SocketError.RemoteHostClosedError:
-            return
-        self._append_log(f"Socket error: {self._socket.errorString()}")
-        self._socket.abort()
+    def _handle_error(self, message: str) -> None:  # pragma: no cover - Qt callback
+        self._append_log(f"Socket error: {message}")
         self._update_ui_state()
 
-    def _handle_ready_read(self) -> None:
-        data = bytes(self._socket.readAll()).decode("utf-8", errors="ignore")
-        if not data:
-            return
-        self._buffer += data
-        while "\n" in self._buffer:
-            line, self._buffer = self._buffer.split("\n", 1)
-            self._process_line(line.strip())
+    def _handle_telemetry(self, data: dict[str, object]) -> None:
+        self._telemetry.update_values(data)
+        raw = data.get("raw")
+        if raw is not None:
+            self._append_log(str(raw))
+
+    def _handle_line(self, line: str) -> None:
+        if line:
+            self._append_log(line)
 
     # ------------------------------------------------------------------
     # UI helpers
     # ------------------------------------------------------------------
     def _update_ui_state(self) -> None:
-        connected = self._socket.state() == QAbstractSocket.SocketState.ConnectedState
-        connecting = self._socket.state() == QAbstractSocket.SocketState.ConnectingState
+        connected = self._connection.is_connected()
+        connecting = self._connection.is_connecting()
         if connected:
             self._connect_button.setText("Disconnect")
             self._status_label.setText("Connected")
@@ -242,35 +245,19 @@ class SerialBridgeClient(QMainWindow):
         self._send_button.setEnabled(connected)
         self._command_input.setEnabled(connected)
 
-    def _process_line(self, line: str) -> None:
-        if not line:
-            return
-        if line.startswith("telemetry "):
-            payload = line.split(" ", 1)[1]
-            try:
-                data = json.loads(payload)
-            except json.JSONDecodeError:
-                self._append_log(f"Malformed telemetry: {payload}")
-                return
-            self._telemetry.update_values(data)
-            if raw := data.get("raw"):
-                self._append_log(str(raw))
-            return
-        self._append_log(line)
-
     def _send_command(self) -> None:
-        if self._socket.state() != QAbstractSocket.SocketState.ConnectedState:
+        if not self._connection.is_connected():
             self._append_log("Not connected.")
             return
         command = self._command_input.text().strip()
         if not command:
             return
-        payload = (command + "\n").encode("utf-8")
-        bytes_written = self._socket.write(payload)
-        if bytes_written == -1:
+        try:
+            self._connection.send_command(command)
+        except RuntimeError:
             self._append_log("Failed to send command.")
-        else:
-            self._append_log(f"> {command}")
+            return
+        self._append_log(f"> {command}")
         self._command_input.clear()
 
     def _append_log(self, message: str) -> None:

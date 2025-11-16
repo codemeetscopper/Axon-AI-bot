@@ -213,6 +213,7 @@ class RoboticFaceWidget(QWidget):
 
         sparkle = 0.4 + self._sparkle * 0.6
 
+        sleepy_mode = self._current_emotion == "sleepy"
         for eye_center, direction in ((left_eye_center, -1), (right_eye_center, 1)):
             self._draw_eye(
                 painter,
@@ -226,6 +227,7 @@ class RoboticFaceWidget(QWidget):
                 pitch_offset,
                 accent_color,
                 sparkle,
+                sleepy_mode,
             )
 
         self._draw_brows(painter, left_eye_center, right_eye_center, eye_width, brow_raise, brow_tilt, accent_color)
@@ -249,6 +251,7 @@ class RoboticFaceWidget(QWidget):
         pitch_offset: float,
         accent: QColor,
         sparkle: float,
+        sleepy: bool,
     ) -> None:
         vertical_scale = openness
         scaled_height = height * vertical_scale
@@ -279,9 +282,11 @@ class RoboticFaceWidget(QWidget):
         painter.save()
         painter.setClipPath(outer_path)
 
-        iris_base = min(width, scaled_height) * 0.32
-        if vertical_scale < 0.5:
-            iris_base = max(iris_base, width * 0.38)
+        iris_base = min(width, height) * 0.32
+        if vertical_scale < 0.55:
+            iris_base = max(iris_base, width * 0.4)
+        if sleepy:
+            iris_base = max(iris_base, width * 0.46)
         iris_radius = iris_base * iris_scale
         iris_offset_x = yaw_offset * width * 0.45
         iris_offset_y = pitch_offset * scaled_height * 0.35
@@ -311,24 +316,7 @@ class RoboticFaceWidget(QWidget):
 
         painter.restore()  # remove clip
 
-        self._draw_sleepy_lids(painter, eye_rect, accent, openness)
-
-        lid_shine = QLinearGradient(eye_rect.topLeft(), eye_rect.topRight())
-        lid_shine.setColorAt(0.0, QColor(255, 255, 255, 35))
-        lid_shine.setColorAt(0.5, QColor(255, 255, 255, 80))
-        lid_shine.setColorAt(1.0, QColor(255, 255, 255, 35))
-        painter.setBrush(lid_shine)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(
-            QRectF(
-                eye_rect.left() + eye_rect.width() * 0.1,
-                eye_rect.top() + eye_rect.height() * 0.05,
-                eye_rect.width() * 0.8,
-                eye_rect.height() * 0.35,
-            ),
-            eye_rect.height() * 0.15,
-            eye_rect.height() * 0.15,
-        )
+        self._draw_sleepy_lids(painter, eye_rect, accent, openness, sleepy)
 
         painter.setPen(QPen(QColor(70, 90, 160), max(2.0, width * 0.035)))
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -336,7 +324,16 @@ class RoboticFaceWidget(QWidget):
 
         painter.restore()
 
-    def _draw_sleepy_lids(self, painter: QPainter, eye_rect: QRectF, accent: QColor, openness: float) -> None:
+    def _draw_sleepy_lids(
+        self,
+        painter: QPainter,
+        eye_rect: QRectF,
+        accent: QColor,
+        openness: float,
+        sleepy: bool,
+    ) -> None:
+        if not sleepy:
+            return
         closing = max(0.0, min(1.0, 1.0 - min(openness, 1.0)))
         if closing <= 0.05:
             return
