@@ -84,36 +84,42 @@ class TelemetryPanel(CollapsiblePanel):
         layout.addWidget(self._toggle_button, 0, Qt.AlignmentFlag.AlignRight)
 
         for index, (field, icon_key, formatter, color) in enumerate(self._FIELDS):
+            # ---- Column container (equal width cell) ----
+            cell = QWidget()
+            cell_layout = QHBoxLayout(cell)
+            cell_layout.setContentsMargins(0, 0, 0, 0)
+            cell_layout.setSpacing(4)
+            cell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+            # ---- icon ----
             icon_label = QLabel()
-            icon_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             icon_pixmap = self._build_icon_pixmap(icon_key, color)
             icon_label.setPixmap(icon_pixmap)
             icon_label.setFixedSize(icon_pixmap.size())
-            content_layout.addWidget(icon_label)
+            icon_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            cell_layout.addWidget(icon_label)
 
+            # ---- value ----
             value_label = QLabel("--")
-            value_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            value_label.setStyleSheet(
-                "color: #e8f1ff; font-size: 14px; font-weight: 600;"
-            )
-            value_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-            content_layout.addWidget(value_label)
+            value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            value_label.setStyleSheet("color: #e8f1ff; font-size: 14px; font-weight: 600;")
+            value_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            cell_layout.addWidget(value_label)
+
+            # store reference
             self._value_labels[field] = value_label
             self._formatters[field] = formatter
 
-            if index < len(self._FIELDS) - 1:
-                separator = QFrame()
-                separator.setObjectName("telemetrySeparator")
-                separator.setFixedSize(1, 14)
-                separator.setStyleSheet(
-                    "QFrame#telemetrySeparator {"
-                    "background-color: rgba(232, 241, 255, 0.12);"
-                    "border: none;"
-                    "}"
-                )
-                content_layout.addWidget(separator)
+            # ----- add cell to main layout -----
+            content_layout.addWidget(cell, 1)  # ⚡ equal spacing columns
 
-        content_layout.addStretch(1)
+            # Optional slim separator
+            if index < len(self._FIELDS):
+                sep = QFrame()
+                sep.setFixedWidth(1)
+                sep.setStyleSheet("background-color: rgba(232,241,255,0.10);")
+                content_layout.addWidget(sep)
+
         self._apply_toggle_palette()
         self._update_toggle_icon()
 

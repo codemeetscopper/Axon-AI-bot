@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 
 from axon_ui import InfoPanel, RoboticFaceWidget, TelemetryPanel
 
-
 class FaceTelemetryDisplay(QWidget):
     """Composite widget that overlays telemetry/info controls on the face widget."""
 
@@ -29,94 +28,127 @@ class FaceTelemetryDisplay(QWidget):
         fixed_size: QSize | Sequence[int] | None = QSize(800, 480),
     ) -> None:
         super().__init__(parent)
-        self._face = face
+
+        # Convert overlays to tuple
         if isinstance(overlays, Sequence):
             self._overlay_widgets = tuple(overlays)
         else:
             self._overlay_widgets = (overlays,)
+
+        self._face = face
         self._fixed_size = fixed_size
-        self._collapsible_panels: list[QWidget] = []
+        self._overlay_margin = 16
+
+        # Find special panels
         self._telemetry_panel = next(
-            (widget for widget in self._overlay_widgets if isinstance(widget, TelemetryPanel)),
+            (w for w in self._overlay_widgets if isinstance(w, TelemetryPanel)),
             None,
         )
         self._info_panel = next(
-            (widget for widget in self._overlay_widgets if isinstance(widget, InfoPanel)),
+            (w for w in self._overlay_widgets if isinstance(w, InfoPanel)),
             None,
         )
+
+        # Internal state
         self._overlay_dock: QWidget | None = None
         self._dock_layout: QHBoxLayout | None = None
-        self._overlay_margin = 16
+        self._collapsible_panels: list[QWidget] = []
+
         self._build_ui()
 
+    # ----------------------------------------------------------------------
+    # UI BUILD
+    # ----------------------------------------------------------------------
     def _build_ui(self) -> None:
         self.setObjectName("robotScreen")
+
+        # Fixed or expanding size
         if self._fixed_size is not None:
             if isinstance(self._fixed_size, QSize):
                 size = self._fixed_size
             else:
-                width, height = self._fixed_size
-                size = QSize(int(width), int(height))
+                w, h = self._fixed_size
+                size = QSize(int(w), int(h))
             self.setFixedSize(size)
         else:
             self.setSizePolicy(
-                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+                QSizePolicy.Expanding, QSizePolicy.Expanding
             )
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        stack = QStackedLayout(self)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
+        # ------------------------------------
+        # STACKED VIEW LAYER (CORRECT WAY)
+        # ------------------------------------
+        stack = QStackedLayout()
         stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(0)
-        stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        stack.setStackingMode(QStackedLayout.StackAll)
+        self.setLayout(stack)
 
+        # --- FACE LAYER ---
         face_layer = QFrame(self)
         face_layer.setObjectName("robotScreenFace")
+
         face_layout = QVBoxLayout(face_layer)
         face_layout.setContentsMargins(0, 0, 0, 0)
         face_layout.setSpacing(0)
-        self._face.setParent(face_layer)
-        self._face.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+
+        self._face.setParent(face_layer)  # safe
+        self._face.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         face_layout.addWidget(self._face)
+
         stack.addWidget(face_layer)
 
+        # --- OVERLAY LAYER ---
         overlay = QWidget(self)
         overlay.setObjectName("robotScreenOverlay")
+
         overlay_layout = QVBoxLayout(overlay)
         overlay_layout.setContentsMargins(
-            self._overlay_margin, self._overlay_margin, self._overlay_margin, self._overlay_margin
+            self._overlay_margin, self._overlay_margin,
+            self._overlay_margin, self._overlay_margin
         )
         overlay_layout.setSpacing(0)
 
+        # -----------------------
+        # PROPER RIGHT-ALIGNED DOCK
+        # -----------------------
         dock = QWidget(overlay)
         dock_layout = QHBoxLayout(dock)
         dock_layout.setContentsMargins(0, 0, 0, 0)
         dock_layout.setSpacing(10)
+
+        # LEFT-side stretch forces widgets to the RIGHT
         dock_layout.addStretch(1)
+
+        # Add widgets in correct order
         for widget in self._overlay_widgets:
             if widget is self._telemetry_panel:
-                widget.setSizePolicy(
-                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-                )
-                dock_layout.addWidget(widget, 1, Qt.AlignmentFlag.AlignTop)
+                # Telemetry panel grows horizontally
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                dock_layout.addWidget(widget)
             else:
-                widget.setSizePolicy(
-                    QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
-                )
-                dock_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignTop)
-        overlay_layout.addWidget(dock, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+                # Other panels stay minimal
+                widget.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+                dock_layout.addWidget(widget)
+
+        # Top alignment handled by the vertical layout
+        overlay_layout.addWidget(dock, 0, Qt.AlignTop)
+        overlay_layout.addStretch(1)
+
         self._overlay_dock = dock
         self._dock_layout = dock_layout
-        overlay_layout.addStretch(1)
+
         self._register_collapsible_panels()
+
         stack.addWidget(overlay)
 
-        stack.setCurrentWidget(face_layer)
         overlay.raise_()
 
-        self.setStyleSheet(
-            """
+        # ------------------------------------
+        # STYLES
+        # ------------------------------------
+        self.setStyleSheet("""
             #robotScreen {
                 background-color: #040914;
                 border-radius: 20px;
@@ -128,21 +160,28 @@ class FaceTelemetryDisplay(QWidget):
             #robotScreenOverlay {
                 background: transparent;
             }
-            """
-        )
+        """)
 
         self._update_overlay_geometry()
 
-    def resizeEvent(self, event):  # type: ignore[override]
+    # ----------------------------------------------------------------------
+    # EVENTS
+    # ----------------------------------------------------------------------
+    def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_overlay_geometry()
 
+    # ----------------------------------------------------------------------
+    # COLLAPSIBLE PANELS
+    # ----------------------------------------------------------------------
     def _register_collapsible_panels(self) -> None:
         self._collapsible_panels = []
+
         for widget in self._overlay_widgets:
             signal = getattr(widget, "collapsedChanged", None)
             if signal is None:
                 continue
+
             self._collapsible_panels.append(widget)
             signal.connect(partial(self._handle_panel_toggle, widget))
             signal.connect(lambda *_: self._update_overlay_geometry())
@@ -150,31 +189,45 @@ class FaceTelemetryDisplay(QWidget):
     def _handle_panel_toggle(self, source: QWidget, collapsed: bool) -> None:
         if collapsed:
             return
+
+        # Collapse all others
         for panel in self._collapsible_panels:
             if panel is source:
                 continue
-            collapse = getattr(panel, "collapse", None)
-            is_collapsed = getattr(panel, "is_collapsed", None)
-            if callable(collapse) and callable(is_collapsed) and not is_collapsed():
-                collapse()
+
+            collapse_fn = getattr(panel, "collapse", None)
+            is_collapsed_fn = getattr(panel, "is_collapsed", None)
+
+            if callable(collapse_fn) and callable(is_collapsed_fn) and not is_collapsed_fn():
+                collapse_fn()
+
         self._update_overlay_geometry()
 
+    # ----------------------------------------------------------------------
+    # GEOMETRY MANAGEMENT
+    # ----------------------------------------------------------------------
     def _update_overlay_geometry(self) -> None:
-        if self._overlay_dock is None:
+        if not self._overlay_dock:
             return
+
         available_width = max(0, self.width() - 2 * self._overlay_margin)
         self._overlay_dock.setFixedWidth(available_width)
-        if self._telemetry_panel is None:
+
+        if not self._telemetry_panel:
             return
+
         collapsed_width = self._telemetry_panel.collapsed_width()
+
         if self._telemetry_panel.is_collapsed():
             width = collapsed_width
         else:
             reserved = 0
-            if self._info_panel is not None:
+            if self._info_panel:
                 reserved = self._info_panel.collapsed_width()
-            spacing = self._dock_layout.spacing() if self._dock_layout is not None else 0
+            spacing = self._dock_layout.spacing() if self._dock_layout else 0
+
             width = max(collapsed_width, available_width - reserved - spacing)
+
         self._set_panel_width(self._telemetry_panel, width)
 
     @staticmethod
