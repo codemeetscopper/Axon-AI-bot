@@ -5,7 +5,7 @@ import socket
 import subprocess
 from typing import TYPE_CHECKING, Callable, Optional
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal, QMargins
 from PySide6.QtGui import (
     QColor,
     QIcon,
@@ -85,6 +85,17 @@ class CollapsiblePanel(QFrame):
 
     def _update_shadow(self) -> None:
         pass
+
+    def collapsed_width(self) -> int:
+        """Approximate the width occupied when only the toggle is visible."""
+
+        layout = self.layout()
+        if layout is None or self._toggle_button is None:
+            return self.sizeHint().width()
+        margins: QMargins = layout.contentsMargins()
+        spacing = max(layout.spacing(), 0)
+        toggle_width = self._toggle_button.sizeHint().width()
+        return margins.left() + toggle_width + spacing + margins.right()
 
 
 class TelemetryPanel(CollapsiblePanel):
@@ -413,11 +424,14 @@ class TelemetryPanel(CollapsiblePanel):
 class InfoPanel(CollapsiblePanel):
     """Show device IP and Wi-Fi connection details."""
 
+    displayModeToggleRequested = Signal()
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("infoPanel")
         self._ip_label: Optional[QLabel] = None
         self._wifi_label: Optional[QLabel] = None
+        self._fullscreen_button: Optional[QPushButton] = None
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(15000)
         self._refresh_timer.timeout.connect(self.refresh_info)
@@ -449,18 +463,24 @@ class InfoPanel(CollapsiblePanel):
         content = QFrame()
         content.setObjectName("infoContent")
         content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        content_layout = QVBoxLayout(content)
+        content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(2)
+        content_layout.setSpacing(8)
         layout.addWidget(content, 1)
         self._content_frame = content
 
         ip_label = QLabel("IP: --")
         wifi_label = QLabel("Wi-Fi: --")
+        for label in (ip_label, wifi_label):
+            label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         content_layout.addWidget(ip_label)
+        content_layout.addWidget(self._build_separator())
         content_layout.addWidget(wifi_label)
         self._ip_label = ip_label
         self._wifi_label = wifi_label
+
+        content_layout.addWidget(self._build_fullscreen_button())
+        content_layout.addStretch(1)
 
         self._toggle_button = QPushButton()
         self._toggle_button.setObjectName("infoToggle")
@@ -479,6 +499,75 @@ class InfoPanel(CollapsiblePanel):
             self._ip_label.setText(f"IP: {_detect_ip_address()}")
         if self._wifi_label is not None:
             self._wifi_label.setText(f"Wi-Fi: {_detect_wifi_name()}")
+
+    def _build_separator(self) -> QFrame:
+        separator = QFrame()
+        separator.setObjectName("infoSeparator")
+        separator.setFixedSize(1, 18)
+        separator.setStyleSheet(
+            "QFrame#infoSeparator {"
+            "background-color: rgba(232, 241, 255, 0.12);"
+            "border: none;"
+            "}"
+        )
+        return separator
+
+    def _build_fullscreen_button(self) -> QPushButton:
+        button = QPushButton()
+        button.setObjectName("fullscreenToggle")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFixedSize(28, 28)
+        button.setIconSize(QSize(20, 20))
+        button.setToolTip("Toggle fullscreen")
+        button.setText("")
+        button.clicked.connect(self.displayModeToggleRequested.emit)
+        self._fullscreen_button = button
+        self._apply_fullscreen_icon()
+        button.setStyleSheet(
+            "#fullscreenToggle {"
+            "background-color: rgba(255, 255, 255, 0.08);"
+            "border-radius: 8px;"
+            "border: none;"
+            "padding: 2px;"
+            "}"
+            "#fullscreenToggle:hover {"
+            "background-color: rgba(255, 255, 255, 0.16);"
+            "}"
+        )
+        return button
+
+    def _apply_fullscreen_icon(self) -> None:
+        if self._fullscreen_button is None:
+            return
+        color = QColor("#4CC9F0")
+        pixmap = QPixmap(22, 22)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(color)
+        pen.setWidthF(2.0)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+
+        margin = 5
+        painter.drawLine(margin, margin, margin + 6, margin)
+        painter.drawLine(margin, margin, margin, margin + 6)
+        painter.drawLine(
+            pixmap.width() - margin - 6,
+            pixmap.height() - margin,
+            pixmap.width() - margin,
+            pixmap.height() - margin,
+        )
+        painter.drawLine(
+            pixmap.width() - margin,
+            pixmap.height() - margin - 6,
+            pixmap.width() - margin,
+            pixmap.height() - margin,
+        )
+
+        painter.end()
+        self._fullscreen_button.setIcon(QIcon(pixmap))
 
     def _apply_toggle_palette(self) -> None:
         if self._toggle_button is None:

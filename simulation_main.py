@@ -50,6 +50,17 @@ class FaceTelemetryDisplay(QWidget):
             self._overlay_widgets = (overlays,)
         self._fixed_size = fixed_size
         self._collapsible_panels: list[QWidget] = []
+        self._telemetry_panel = next(
+            (widget for widget in self._overlay_widgets if isinstance(widget, TelemetryPanel)),
+            None,
+        )
+        self._info_panel = next(
+            (widget for widget in self._overlay_widgets if isinstance(widget, InfoPanel)),
+            None,
+        )
+        self._overlay_dock: QWidget | None = None
+        self._dock_layout: QHBoxLayout | None = None
+        self._overlay_margin = 16
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -87,20 +98,30 @@ class FaceTelemetryDisplay(QWidget):
         overlay = QWidget(self)
         overlay.setObjectName("robotScreenOverlay")
         overlay_layout = QVBoxLayout(overlay)
-        overlay_layout.setContentsMargins(16, 16, 16, 16)
+        overlay_layout.setContentsMargins(
+            self._overlay_margin, self._overlay_margin, self._overlay_margin, self._overlay_margin
+        )
         overlay_layout.setSpacing(0)
 
         dock = QWidget(overlay)
         dock_layout = QHBoxLayout(dock)
         dock_layout.setContentsMargins(0, 0, 0, 0)
         dock_layout.setSpacing(10)
-        dock_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        dock_layout.addStretch(1)
         for widget in self._overlay_widgets:
-            widget.setSizePolicy(
-                QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
-            )
-            dock_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignTop)
+            if widget is self._telemetry_panel:
+                widget.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+                )
+                dock_layout.addWidget(widget, 1, Qt.AlignmentFlag.AlignTop)
+            else:
+                widget.setSizePolicy(
+                    QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
+                )
+                dock_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignTop)
         overlay_layout.addWidget(dock, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        self._overlay_dock = dock
+        self._dock_layout = dock_layout
         overlay_layout.addStretch(1)
         self._register_collapsible_panels()
         stack.addWidget(overlay)
@@ -127,6 +148,12 @@ class FaceTelemetryDisplay(QWidget):
             """
         )
 
+        self._update_overlay_geometry()
+
+    def resizeEvent(self, event):  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_overlay_geometry()
+
     def _register_collapsible_panels(self) -> None:
         self._collapsible_panels = []
         for widget in self._overlay_widgets:
@@ -135,6 +162,7 @@ class FaceTelemetryDisplay(QWidget):
                 continue
             self._collapsible_panels.append(widget)
             signal.connect(partial(self._handle_panel_toggle, widget))
+            signal.connect(lambda *_: self._update_overlay_geometry())
 
     def _handle_panel_toggle(self, source: QWidget, collapsed: bool) -> None:
         if collapsed:
@@ -146,6 +174,31 @@ class FaceTelemetryDisplay(QWidget):
             is_collapsed = getattr(panel, "is_collapsed", None)
             if callable(collapse) and callable(is_collapsed) and not is_collapsed():
                 collapse()
+        self._update_overlay_geometry()
+
+    def _update_overlay_geometry(self) -> None:
+        if self._overlay_dock is None:
+            return
+        available_width = max(0, self.width() - 2 * self._overlay_margin)
+        self._overlay_dock.setFixedWidth(available_width)
+        if self._telemetry_panel is None:
+            return
+        collapsed_width = self._telemetry_panel.collapsed_width()
+        if self._telemetry_panel.is_collapsed():
+            width = collapsed_width
+        else:
+            reserved = 0
+            if self._info_panel is not None:
+                reserved = self._info_panel.collapsed_width()
+            spacing = self._dock_layout.spacing() if self._dock_layout is not None else 0
+            width = max(collapsed_width, available_width - reserved - spacing)
+        self._set_panel_width(self._telemetry_panel, width)
+
+    @staticmethod
+    def _set_panel_width(panel: QWidget, width: int) -> None:
+        width = max(0, int(width))
+        panel.setMinimumWidth(width)
+        panel.setMaximumWidth(width)
 
 
 class ControlPanel(QWidget):
@@ -418,6 +471,7 @@ class MainWindow(QWidget):
         self.face = RoboticFaceWidget()
         self.telemetry = TelemetryPanel()
         self.info_panel = InfoPanel()
+        self.info_panel.displayModeToggleRequested.connect(self._toggle_window_mode)
 
         display = FaceTelemetryDisplay(self.face, (self.info_panel, self.telemetry))
         layout.addWidget(display, 0, Qt.AlignmentFlag.AlignTop)
@@ -428,6 +482,12 @@ class MainWindow(QWidget):
         layout.addWidget(panel, 1)
 
         self.face.set_emotion("happy")
+
+    def _toggle_window_mode(self) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
 
 
 def main() -> int:
