@@ -4,24 +4,34 @@ from __future__ import annotations
 
 import random
 from functools import partial
-from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSlider,
     QSpacerItem,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from PySide6.QtNetwork import QAbstractSocket
+
 from axon_ui import RoboticFaceWidget, TelemetryPanel
-from robot_control.sensor_data import SensorSample
+from robot_control.remote_bridge import (
+    DEFAULT_BRIDGE_HOST,
+    DEFAULT_BRIDGE_PORT,
+    RemoteBridgeController,
+)
 
 
 class ControlPanel(QWidget):
@@ -31,30 +41,34 @@ class ControlPanel(QWidget):
         self,
         face: RoboticFaceWidget,
         telemetry: TelemetryPanel,
+        controller: RemoteBridgeController,
+        *,
+        default_host: str = DEFAULT_BRIDGE_HOST,
+        default_port: int = DEFAULT_BRIDGE_PORT,
+        auto_connect: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.face = face
         self.telemetry = telemetry
+        self._controller = controller
         self._cycle_timer = QTimer(self)
         self._cycle_timer.setInterval(2600)
         self._cycle_timer.timeout.connect(self._advance_cycle)
-        self._telemetry_values: dict[str, float] = {
-            "message_type": 1001.0,
-            "left_speed": 0.0,
-            "right_speed": 0.0,
-            "roll": 0.0,
-            "pitch": 0.0,
+        self._orientation_values: dict[str, float] = {
             "yaw": 0.0,
-            "temperature_c": 24.0,
-            "voltage_v": 12.0,
+            "pitch": 0.0,
+            "roll": 0.0,
         }
         self.sliders: dict[str, QSlider] = {}
-        self._telemetry_sliders: dict[str, QSlider] = {}
-        self._build_ui()
-        self._push_telemetry()
+        self._build_ui(default_host, default_port)
+        self._controller.connectionStateChanged.connect(self._handle_state_changed)
+        self._controller.lineReceived.connect(self._append_bridge_line)
+        self._controller.errorOccurred.connect(self._handle_bridge_error)
+        if auto_connect:
+            QTimer.singleShot(0, self._connect_to_robot)
 
-    def _build_ui(self) -> None:
+    def _build_ui(self, default_host: str, default_port: int) -> None:
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
 
@@ -90,7 +104,7 @@ class ControlPanel(QWidget):
 
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.setRange(-rng, rng)
-            slider.setValue(int(self._telemetry_values[axis]))
+            slider.setValue(int(self._orientation_values[axis]))
             slider.setSingleStep(1)
             slider.valueChanged.connect(partial(self._update_orientation, axis))
             grid.addWidget(slider, row, 1)
@@ -114,65 +128,61 @@ class ControlPanel(QWidget):
 
         layout.addSpacing(18)
 
-        telemetry_title = QLabel("Telemetry simulation")
-        telemetry_title.setStyleSheet("font-size: 18px; font-weight: 600; letter-spacing: 1px;")
-        layout.addWidget(telemetry_title)
+        conn_title = QLabel("Robot connection")
+        conn_title.setStyleSheet("font-size: 18px; font-weight: 600; letter-spacing: 1px;")
+        layout.addWidget(conn_title)
 
-        telemetry_grid = QGridLayout()
-        telemetry_grid.setVerticalSpacing(16)
-        telemetry_grid.setHorizontalSpacing(12)
-        telemetry_grid.setColumnStretch(1, 1)
-        layout.addLayout(telemetry_grid)
+        host_layout = QHBoxLayout()
+        host_layout.setSpacing(12)
+        host_label = QLabel("Host")
+        host_label.setFixedWidth(36)
+        host_layout.addWidget(host_label)
+        self.host_input = QLineEdit(default_host)
+        self.host_input.setPlaceholderText(DEFAULT_BRIDGE_HOST)
+        host_layout.addWidget(self.host_input, 1)
+        layout.addLayout(host_layout)
 
-        self._create_telemetry_slider(
-            telemetry_grid,
-            0,
-            "Left speed",
-            "left_speed",
-            -255.0,
-            255.0,
-            1.0,
-            lambda value: f"{value:.0f}",
-        )
-        self._create_telemetry_slider(
-            telemetry_grid,
-            1,
-            "Right speed",
-            "right_speed",
-            -255.0,
-            255.0,
-            1.0,
-            lambda value: f"{value:.0f}",
-        )
-        self._create_telemetry_slider(
-            telemetry_grid,
-            2,
-            "Temperature",
-            "temperature_c",
-            0.0,
-            100.0,
-            0.1,
-            lambda value: f"{value:.1f}°C",
-        )
-        self._create_telemetry_slider(
-            telemetry_grid,
-            3,
-            "Voltage",
-            "voltage_v",
-            0.0,
-            24.0,
-            0.1,
-            lambda value: f"{value:.1f}V",
-        )
+        port_layout = QHBoxLayout()
+        port_layout.setSpacing(12)
+        port_label = QLabel("Port")
+        port_label.setFixedWidth(36)
+        port_layout.addWidget(port_label)
+        self.port_input = QSpinBox()
+        self.port_input.setRange(1, 65535)
+        self.port_input.setValue(default_port)
+        port_layout.addWidget(self.port_input, 1)
+        layout.addLayout(port_layout)
 
-        layout.addSpacerItem(QSpacerItem(20, 40))
+        self.status_label = QLabel("Disconnected")
+        self.status_label.setObjectName("connectionStatusLabel")
+        self.status_label.setStyleSheet("color: rgba(255,255,255,0.7);")
+        layout.addWidget(self.status_label)
 
-        tip = QLabel("Use the controls to explore the face and the telemetry overlay.")
-        tip.setWordWrap(True)
-        tip.setStyleSheet("color: rgba(255,255,255,0.6); font-size: 12px;")
-        layout.addWidget(tip)
+        self.connect_button = QPushButton("Connect to robot")
+        self.connect_button.clicked.connect(self._toggle_connection)
+        layout.addWidget(self.connect_button)
 
-        layout.addStretch(1)
+        command_title = QLabel("Raw serial command")
+        command_title.setStyleSheet("font-size: 14px; font-weight: 500; margin-top: 8px;")
+        layout.addWidget(command_title)
+
+        command_layout = QHBoxLayout()
+        command_layout.setSpacing(8)
+        self.command_input = QLineEdit()
+        self.command_input.setPlaceholderText("e.g. set emotion happy")
+        command_layout.addWidget(self.command_input, 1)
+        send_button = QPushButton("Send")
+        send_button.clicked.connect(self._send_raw_command)
+        command_layout.addWidget(send_button)
+        layout.addLayout(command_layout)
+
+        self.console = QPlainTextEdit()
+        self.console.setPlaceholderText("Bridge output will appear here")
+        self.console.setReadOnly(True)
+        self.console.setMaximumBlockCount(300)
+        layout.addWidget(self.console, 1)
+
+        layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
 
     def _set_value_label(self, object_name: str, text: str) -> None:
         label = self.findChild(QLabel, object_name)
@@ -181,9 +191,8 @@ class ControlPanel(QWidget):
 
     def _update_orientation(self, axis: str, value: int) -> None:
         self.face.set_orientation(**{axis: float(value)})
-        self._telemetry_values[axis] = float(value)
+        self._orientation_values[axis] = float(value)
         self._set_value_label(f"value_{axis}", f"{value}°")
-        self._push_telemetry()
 
     def _reset_orientation(self) -> None:
         self.face.set_orientation(yaw=0.0, pitch=0.0, roll=0.0)
@@ -191,9 +200,8 @@ class ControlPanel(QWidget):
             slider.blockSignals(True)
             slider.setValue(0)
             slider.blockSignals(False)
-            self._telemetry_values[axis] = 0.0
+            self._orientation_values[axis] = 0.0
             self._set_value_label(f"value_{axis}", "0°")
-        self._push_telemetry()
 
     def _random_emotion(self) -> None:
         emotions = list(self.face.available_emotions())
@@ -223,60 +231,56 @@ class ControlPanel(QWidget):
         if next_emotion != current_text:
             self.emotion_combo.setCurrentText(next_emotion)
 
-    def _create_telemetry_slider(
-        self,
-        grid: QGridLayout,
-        row: int,
-        title: str,
-        key: str,
-        minimum: float,
-        maximum: float,
-        scale: float,
-        formatter: Callable[[float], str],
-    ) -> None:
-        label = QLabel(title)
-        label.setStyleSheet("font-size: 14px; font-weight: 500;")
-        grid.addWidget(label, row, 0)
+    def _toggle_connection(self) -> None:
+        if self._controller.is_connected():
+            self._controller.disconnect()
+            return
+        self._connect_to_robot()
 
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider_min = int(round(minimum / scale))
-        slider_max = int(round(maximum / scale))
-        slider.setRange(slider_min, slider_max)
-        slider.setSingleStep(1)
-        slider.setValue(int(round(self._telemetry_values[key] / scale)))
-        slider.valueChanged.connect(
-            partial(self._handle_telemetry_slider, key, scale, formatter)
-        )
-        grid.addWidget(slider, row, 1)
-        self._telemetry_sliders[key] = slider
+    def _connect_to_robot(self) -> None:
+        host = self.host_input.text().strip() or DEFAULT_BRIDGE_HOST
+        port = int(self.port_input.value())
+        self._append_bridge_line(f"Connecting to {host}:{port}...")
+        self._controller.connect_to(host, port)
 
-        value_label = QLabel(formatter(self._telemetry_values[key]))
-        value_label.setObjectName(f"telemetry_value_{key}")
-        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        value_label.setFixedWidth(78)
-        grid.addWidget(value_label, row, 2)
+    def _send_raw_command(self) -> None:
+        command = self.command_input.text().strip()
+        if not command:
+            return
+        try:
+            self._controller.send_command(command)
+        except RuntimeError as exc:
+            QMessageBox.warning(self, "Serial bridge", str(exc))
+            return
+        self._append_bridge_line(f">> {command}")
+        self.command_input.clear()
 
-    def _handle_telemetry_slider(
-        self,
-        key: str,
-        scale: float,
-        formatter: Callable[[float], str],
-        value: int,
-    ) -> None:
-        actual = float(value) * scale
-        self._telemetry_values[key] = actual
-        self._set_value_label(f"telemetry_value_{key}", formatter(actual))
-        self._push_telemetry()
+    def _append_bridge_line(self, line: str) -> None:
+        if not line:
+            return
+        self.console.appendPlainText(line)
 
-    def _push_telemetry(self) -> None:
-        sample = SensorSample(
-            message_type=int(self._telemetry_values["message_type"]),
-            left_speed=float(self._telemetry_values["left_speed"]),
-            right_speed=float(self._telemetry_values["right_speed"]),
-            roll=float(self._telemetry_values["roll"]),
-            pitch=float(self._telemetry_values["pitch"]),
-            yaw=float(self._telemetry_values["yaw"]),
-            temperature_c=float(self._telemetry_values["temperature_c"]),
-            voltage_v=float(self._telemetry_values["voltage_v"]),
-        )
-        self.telemetry.update_sample(sample)
+    def _handle_bridge_error(self, message: str) -> None:
+        self._append_bridge_line(f"Error: {message}")
+
+    def _handle_state_changed(self, state: QAbstractSocket.SocketState) -> None:
+        mapping = {
+            QAbstractSocket.SocketState.UnconnectedState: "Disconnected",
+            QAbstractSocket.SocketState.HostLookupState: "Resolving host...",
+            QAbstractSocket.SocketState.ConnectingState: "Connecting...",
+            QAbstractSocket.SocketState.ConnectedState: "Connected",
+            QAbstractSocket.SocketState.ClosingState: "Closing",
+        }
+        self.status_label.setText(mapping.get(state, "Unknown state"))
+        if state == QAbstractSocket.SocketState.ConnectedState:
+            self.connect_button.setText("Disconnect")
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+        elif state == QAbstractSocket.SocketState.ConnectingState:
+            self.connect_button.setText("Cancel")
+            self.host_input.setEnabled(False)
+            self.port_input.setEnabled(False)
+        else:
+            self.connect_button.setText("Connect to robot")
+            self.host_input.setEnabled(True)
+            self.port_input.setEnabled(True)
