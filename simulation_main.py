@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     stack.register(OsiLayer.APPLICATION, "SimulatorMainWindow", window)
     LOGGER.debug("%s", describe_stack(stack))
     window.resize(1220, 620)
-    window.show()
+    window.showMaximized()
     app.aboutToQuit.connect(window.shutdown)
     return app.exec()
 

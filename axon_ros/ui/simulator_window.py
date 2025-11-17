@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget, QHBoxLayout
 
+from axon_ros.ui.bridge_chassis_panel import BridgeChassisPanel
+from axon_ros.ui.bridge_command_panel import BridgeCommandPanel
 from axon_ros.ui.control_panel import ControlPanel
 from axon_ros.ui.robot_link_panel import RobotLinkPanel
 from axon_ros.ui.face_telemetry_display import FaceTelemetryDisplay
@@ -60,10 +62,15 @@ class SimulatorMainWindow(QWidget):
         )
         self.robot_link_panel.remoteControlChanged.connect(self._handle_remote_toggle)
         self.robot_link_panel.linkStateChanged.connect(self._handle_remote_link_state)
+        controller = self.robot_link_panel.controller
+        self.bridge_chassis_panel = BridgeChassisPanel(controller, self)
+        self.bridge_command_panel = BridgeCommandPanel(controller, self)
 
         tabs = QTabWidget()
         tabs.addTab(self.control_panel, "Simulator")
         tabs.addTab(self.robot_link_panel, "Robot link")
+        tabs.addTab(self.bridge_chassis_panel, "Chassis control")
+        tabs.addTab(self.bridge_command_panel, "Robot commands")
         layout.addWidget(tabs, 0, Qt.AlignmentFlag.AlignBottom)
 
         self.face.set_emotion("happy")

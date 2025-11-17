@@ -90,6 +90,12 @@ class RobotLinkPanel(QWidget):
         self._build_ui()
         self._apply_styles()
 
+    @property
+    def controller(self) -> RemoteBridgeController:
+        """Expose the shared bridge controller for auxiliary panels."""
+
+        return self._controller
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
