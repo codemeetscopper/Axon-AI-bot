@@ -7,9 +7,10 @@ import time
 
 from PySide6.QtWidgets import QApplication
 
+from axon_ros.osi import OsiLayer, OsiStack, describe_stack
 from axon_ros.runtime import RobotMainWindow, RobotRuntime
 from axon_ui import InfoPanel, RoboticFaceWidget, TelemetryPanel
-from robot_control import EmotionPolicy, FaceController, SerialReader
+from robot_control import EmotionPolicy, FaceController, GyroCalibrator, SerialReadWriter
 from robot_control.serial_bridge_config import SerialBridgeConfig
 from robot_control.serial_bridge_server import SerialBridgeServer
 
@@ -40,16 +41,20 @@ def main() -> int:
     time.sleep(5)
     _configure_logging(DEFAULT_LOG_LEVEL)
 
+    stack = OsiStack("Robot runtime")
+
     try:
-        reader = SerialReader(port=DEFAULT_SERIAL_PORT, baudrate=DEFAULT_BAUDRATE)
+        reader = SerialReadWriter(port=DEFAULT_SERIAL_PORT, baudrate=DEFAULT_BAUDRATE)
     except RuntimeError as exc:
         LOGGER.error("%s", exc)
         return 1
+    stack.register(OsiLayer.PHYSICAL, "SerialReadWriter", reader, "UART sensor feed")
 
     bridge = SerialBridgeServer(
         reader,
         config=SerialBridgeConfig(host=DEFAULT_BRIDGE_HOST, port=DEFAULT_BRIDGE_PORT),
     )
+    stack.register(OsiLayer.TRANSPORT, "SerialBridgeServer", bridge, "TCP telemetry bridge")
 
     app = QApplication(sys.argv)
     app.setApplicationDisplayName("Axon Runtime")
@@ -59,19 +64,28 @@ def main() -> int:
         apply_palette(app)
 
     face = RoboticFaceWidget()
-    controller = FaceController(face, EmotionPolicy())
+    policy = EmotionPolicy()
+    calibrator = GyroCalibrator()
+    controller = FaceController(face, policy)
     telemetry = TelemetryPanel()
     info_panel = InfoPanel()
     window = RobotMainWindow(face, (info_panel, telemetry))
+    stack.register(OsiLayer.PRESENTATION, "EmotionPolicy", policy)
+    stack.register(OsiLayer.PRESENTATION, "GyroCalibrator", calibrator)
+    stack.register(OsiLayer.APPLICATION, "RobotMainWindow", window)
 
     runtime = RobotRuntime(
         reader,
         controller,
         telemetry,
         poll_interval_ms=DEFAULT_POLL_INTERVAL_MS,
+        calibrator=calibrator,
         bridge=bridge,
     )
+    stack.register(OsiLayer.SESSION, "RobotRuntime", runtime, "Qt polling loop")
     app.aboutToQuit.connect(runtime.stop)
+
+    LOGGER.info("%s", describe_stack(stack))
 
     # Support clean shutdown when Ctrl+C is pressed on the console.
     signal.signal(signal.SIGINT, lambda *_: app.quit())
