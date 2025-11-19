@@ -5,7 +5,7 @@ import random
 from typing import Dict, Tuple
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, QTimer, QVariantAnimation, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from axon_ui.emotion_preset import EmotionPreset
@@ -20,7 +20,8 @@ class RoboticFaceWidget(QWidget):
         self.setMinimumSize(480, 320)
 
         self._presets: Dict[str, EmotionPreset] = self._build_presets()
-        self._current_emotion = "neutral"
+        self._default_emotion = "neutral"
+        self._current_emotion = self._default_emotion
         self._state = self._preset_to_state(self._presets[self._current_emotion])
         self._start_state = self._state.copy()
         self._target_state = self._state.copy()
@@ -47,6 +48,9 @@ class RoboticFaceWidget(QWidget):
         self._blinking = False
         self._next_blink_at = random.uniform(2.0, 5.0)
         self._time_since_blink = 0.0
+        self._emotion_hold_time = 0.0
+        self._battery_voltage: float | None = None
+        self._low_battery_forced = False
 
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
 
@@ -62,6 +66,7 @@ class RoboticFaceWidget(QWidget):
             return
 
         self._current_emotion = emotion
+        self._emotion_hold_time = 0.0
         target_state = self._preset_to_state(self._presets[emotion])
         self._start_state = self._state.copy()
 
@@ -81,6 +86,11 @@ class RoboticFaceWidget(QWidget):
         if roll is not None:
             self._orientation["roll"] = float(max(-30.0, min(30.0, roll)))
         self.update()
+
+    def set_battery_voltage(self, voltage: float) -> None:
+        """Update battery voltage and enforce default fear when critically low."""
+        self._battery_voltage = float(voltage)
+        self._enforce_low_battery_face()
 
     # ------------------------------------------------------------------
     # Animation helpers
@@ -103,6 +113,8 @@ class RoboticFaceWidget(QWidget):
         dt = 0.016
         self._time += dt
         self._time_since_blink += dt
+        self._emotion_hold_time += dt
+        self._enforce_low_battery_face()
 
         self._breathe_offset = math.sin(self._time * 0.7) * 6.0
         self._sparkle = (math.sin(self._time * 3.0) + 1.0) * 0.5
@@ -216,6 +228,7 @@ class RoboticFaceWidget(QWidget):
 
         self._draw_brows(painter, left_eye_center, right_eye_center, eye_width, brow_raise, brow_tilt, accent_color)
         self._draw_mouth(painter, center, face_rect, accent_color)
+        self._draw_emotion_icon(painter, face_rect, accent_color)
 
         painter.restore()
 
@@ -346,6 +359,205 @@ class RoboticFaceWidget(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPath(path)
             painter.restore()
+
+    def _icon_anchor(self, face_rect: QRectF, x_factor: float, y_factor: float) -> QPointF:
+        center = face_rect.center()
+        return QPointF(
+            center.x() + face_rect.width() * x_factor,
+            center.y() + face_rect.height() * y_factor + self._breathe_offset * 0.08,
+        )
+
+    def _draw_emotion_icon(self, painter: QPainter, face_rect: QRectF, accent: QColor) -> None:
+        emotion = self._current_emotion
+        if emotion == "neutral" or self._emotion_hold_time < 2.0:
+            return
+
+        painter.save()
+
+        base_size = face_rect.width() * 0.07
+        stroke = max(1.3, face_rect.width() * 0.0028)
+        bobble = math.sin(self._time * 1.6) * base_size * 0.08
+        pulse = 1.0 + 0.1 * math.sin(self._time * 2.2)
+
+        top_center = self._icon_anchor(face_rect, 0.0, -0.28)
+        top_left = self._icon_anchor(face_rect, -0.34, -0.24)
+        top_right = self._icon_anchor(face_rect, 0.34, -0.24)
+        side_left = self._icon_anchor(face_rect, -0.45, -0.06)
+        side_right = self._icon_anchor(face_rect, 0.45, -0.06)
+        bottom_left = self._icon_anchor(face_rect, -0.32, 0.18)
+        bottom_right = self._icon_anchor(face_rect, 0.32, 0.18)
+
+        highlight = QColor(255, 255, 255, 230)
+        lowlight = QColor(max(0, accent.red() - 80), max(0, accent.green() - 80), max(0, accent.blue() - 80), 220)
+
+        if emotion == "happy":
+            heart_color = QColor(accent.red(), accent.green(), accent.blue(), 230)
+            self._draw_heart(painter, QPointF(top_left.x(), top_left.y() + bobble), base_size * 0.55 * pulse, heart_color)
+            self._draw_star(
+                painter,
+                QPointF(top_right.x() + base_size * 0.15, top_right.y() - base_size * 0.12 - bobble * 0.8),
+                base_size * 0.5 * pulse,
+                highlight,
+                rotation=18.0,
+            )
+            self._draw_heart(painter, QPointF(top_center.x(), top_center.y() + base_size * 0.1 + bobble * 0.6), base_size * 0.4 * (1.0 + 0.05 * math.sin(self._time * 3.1)), heart_color.lighter(130))
+        elif emotion == "sad":
+            tear_color = QColor(accent.red(), accent.green(), accent.blue(), 210)
+            self._draw_teardrop(painter, QPointF(bottom_left.x(), bottom_left.y() - base_size * 0.15), base_size * 0.85, tear_color)
+        elif emotion == "surprised":
+            bar_height = base_size * 1.1
+            ex_mark_center = QPointF(side_right.x(), side_right.y() - base_size * 0.2 + bobble * 0.5)
+            painter.setPen(QPen(accent, stroke * 1.05, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.setBrush(accent)
+            painter.drawRoundedRect(
+                QRectF(ex_mark_center.x() - base_size * 0.16, ex_mark_center.y() - bar_height * 0.55, base_size * 0.32, bar_height * 0.65),
+                base_size * 0.12,
+                base_size * 0.12,
+            )
+            painter.drawEllipse(QPointF(ex_mark_center.x(), ex_mark_center.y() + bar_height * 0.35), base_size * 0.14, base_size * 0.14)
+        elif emotion == "sleepy":
+            painter.setPen(QPen(accent.lighter(120), stroke, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            base_font_size = max(10, int(base_size * 0.5))
+            sizes = (0.55, 0.72, 0.9)
+            for i, scale in enumerate(sizes):
+                z_font = QFont("Segoe UI", int(base_font_size * scale))
+                z_font.setBold(True)
+                painter.setFont(z_font)
+                height_offset = 0.2 * i
+                painter.drawText(
+                    QRectF(
+                        top_right.x() - base_size * 0.1 + i * base_size * 0.18,
+                        top_right.y() - base_size * 0.45 - height_offset * base_size + bobble * 0.5,
+                        base_size * scale,
+                        base_size * scale,
+                    ),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                    "Z",
+                )
+        elif emotion == "curious":
+            bubble_color = QColor(accent.red(), accent.green(), accent.blue(), 210)
+            painter.setBrush(QColor(30, 32, 50, 230))
+            painter.setPen(QPen(bubble_color, stroke, Qt.PenStyle.SolidLine))
+            bubble_rect = QRectF(side_right.x() - base_size * 0.6, side_right.y() - base_size * 0.1, base_size * 1.4, base_size * 1.05)
+            painter.drawRoundedRect(bubble_rect, base_size * 0.2, base_size * 0.2)
+            painter.setFont(QFont("Segoe UI", max(10, int(base_size * 0.6)), QFont.Weight.Bold))
+            painter.setPen(QPen(bubble_color, stroke))
+            painter.drawText(bubble_rect, Qt.AlignmentFlag.AlignCenter, "?")
+        elif emotion == "excited":
+            burst_color = QColor(accent.red(), accent.green(), accent.blue(), 220)
+            self._draw_star(painter, top_right, base_size * 0.65, burst_color, rotation=8.0)
+            self._draw_star(painter, top_left, base_size * 0.55, highlight, rotation=-10.0)
+            self._draw_star(painter, QPointF(top_center.x(), top_center.y() + base_size * 0.15), base_size * 0.55, burst_color.darker(110), rotation=24.0)
+        elif emotion == "angry":
+            bubble_color = QColor(255, 90, 90, 220)
+            painter.setBrush(QColor(40, 18, 22, 230))
+            painter.setPen(QPen(bubble_color, stroke * 1.1))
+            bubble_rect = QRectF(top_left.x() - base_size * 0.65, top_left.y() - base_size * 0.35, base_size * 1.55, base_size * 0.9)
+            painter.drawRoundedRect(bubble_rect, base_size * 0.2, base_size * 0.2)
+            painter.setFont(QFont("Segoe UI", max(10, int(base_size * 0.5)), QFont.Weight.Black))
+            painter.setPen(QPen(bubble_color, stroke))
+            painter.drawText(bubble_rect, Qt.AlignmentFlag.AlignCenter, "#$%*")
+        elif emotion == "fearful":
+            sweat_color = QColor(180, 220, accent.blue(), 215)
+            self._draw_teardrop(painter, QPointF(side_left.x() + base_size * 0.2, side_left.y() + base_size * 0.35), base_size * 0.65, sweat_color)
+            self._draw_teardrop(painter, QPointF(top_right.x() + base_size * 0.05, top_right.y() + base_size * 0.35), base_size * 0.55, sweat_color)
+            painter.setPen(QPen(lowlight, stroke * 0.9))
+            painter.drawLine(
+                QPointF(top_left.x() + base_size * 0.2, top_left.y() - base_size * 0.15),
+                QPointF(top_left.x() - base_size * 0.1, top_left.y() - base_size * 0.55),
+            )
+            painter.drawLine(
+                QPointF(top_left.x() + base_size * 0.45, top_left.y() - base_size * 0.05),
+                QPointF(top_left.x() + base_size * 0.2, top_left.y() - base_size * 0.45),
+            )
+        elif emotion == "disgusted":
+            painter.setPen(QPen(QColor(140, 220, 110, 220), stroke * 1.05, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            wave_height = base_size * 0.35
+            x_start = top_right.x() - base_size * 0.4
+            for i in range(3):
+                path = QPainterPath(QPointF(x_start + i * base_size * 0.25, top_right.y() + wave_height * 0.6))
+                path.cubicTo(
+                    QPointF(x_start + i * base_size * 0.25 + base_size * 0.08, top_right.y() + wave_height * 0.1),
+                    QPointF(x_start + i * base_size * 0.25 + base_size * 0.18, top_right.y() + wave_height * 1.1),
+                    QPointF(x_start + i * base_size * 0.25 + base_size * 0.32, top_right.y() + wave_height * 0.6),
+                )
+                painter.drawPath(path)
+        elif emotion == "smirk":
+            sparkle_color = QColor(accent.red(), accent.green(), accent.blue(), 215)
+            self._draw_star(painter, QPointF(bottom_right.x(), bottom_right.y() - base_size * 0.3), base_size * 0.4, sparkle_color, rotation=22.0)
+            painter.setPen(QPen(sparkle_color, stroke * 0.9))
+            painter.drawArc(
+                QRectF(bottom_right.x() - base_size * 0.6, bottom_right.y() - base_size * 0.15, base_size * 0.7, base_size * 0.35),
+                200 * 16,
+                160 * 16,
+            )
+        elif emotion == "proud":
+            crown_width = base_size * 1.6
+            crown_height = base_size * 0.9
+            crown_top = QPointF(top_center.x(), top_center.y() + base_size * 0.05)
+            path = QPainterPath(QPointF(crown_top.x() - crown_width * 0.5, crown_top.y() + crown_height * 0.55))
+            path.lineTo(QPointF(crown_top.x() - crown_width * 0.25, crown_top.y()))
+            path.lineTo(QPointF(crown_top.x(), crown_top.y() + crown_height * 0.55))
+            path.lineTo(QPointF(crown_top.x() + crown_width * 0.25, crown_top.y()))
+            path.lineTo(QPointF(crown_top.x() + crown_width * 0.5, crown_top.y() + crown_height * 0.55))
+            path.lineTo(QPointF(crown_top.x() + crown_width * 0.5, crown_top.y() + crown_height))
+            path.lineTo(QPointF(crown_top.x() - crown_width * 0.5, crown_top.y() + crown_height))
+            path.closeSubpath()
+            painter.setBrush(QColor(255, 205, 120, 230))
+            painter.setPen(QPen(QColor(140, 90, 50, 220), stroke * 1.05))
+            painter.drawPath(path)
+            jewel_radius = base_size * 0.12
+            painter.setBrush(accent)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(QPointF(crown_top.x(), crown_top.y() + crown_height * 0.62), jewel_radius, jewel_radius)
+        else:
+            painter.restore()
+            return
+
+        painter.restore()
+
+    def _draw_star(self, painter: QPainter, center: QPointF, radius: float, color: QColor, rotation: float = 0.0) -> None:
+        painter.save()
+        painter.translate(center)
+        painter.rotate(rotation)
+
+        path = QPainterPath(QPointF(0, -radius))
+        for i in range(1, 10):
+            angle = -math.pi / 2 + i * math.pi / 5
+            r = radius if i % 2 == 0 else radius * 0.45
+            path.lineTo(QPointF(math.cos(angle) * r, math.sin(angle) * r))
+        path.closeSubpath()
+
+        painter.setBrush(color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
+        painter.restore()
+
+    def _draw_heart(self, painter: QPainter, center: QPointF, size: float, color: QColor) -> None:
+        painter.save()
+        path = QPainterPath()
+        top = QPointF(center.x(), center.y() - size * 0.1)
+        left = QPointF(center.x() - size * 0.5, center.y() - size * 0.35)
+        right = QPointF(center.x() + size * 0.5, center.y() - size * 0.35)
+        bottom = QPointF(center.x(), center.y() + size * 0.55)
+        path.moveTo(top)
+        path.cubicTo(QPointF(center.x() - size * 0.45, center.y() - size * 0.55), QPointF(center.x() - size * 0.7, center.y() + size * 0.05), bottom)
+        path.cubicTo(QPointF(center.x() + size * 0.7, center.y() + size * 0.05), QPointF(center.x() + size * 0.45, center.y() - size * 0.55), top)
+        path.closeSubpath()
+        painter.setBrush(color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
+        painter.restore()
+
+    def _draw_teardrop(self, painter: QPainter, center: QPointF, size: float, color: QColor) -> None:
+        painter.save()
+        path = QPainterPath(QPointF(center.x(), center.y() - size * 0.55))
+        path.quadTo(QPointF(center.x() + size * 0.45, center.y() - size * 0.25), QPointF(center.x() + size * 0.15, center.y() + size * 0.6))
+        path.quadTo(QPointF(center.x() - size * 0.55, center.y() + size * 0.25), QPointF(center.x(), center.y() - size * 0.55))
+        painter.setBrush(color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
+        painter.restore()
 
     def _draw_mouth(self, painter: QPainter, center: QPointF, face_rect: QRectF, accent: QColor) -> None:
         width_factor = 0.42 * self._state["mouth_width"]
@@ -795,3 +1007,17 @@ class RoboticFaceWidget(QWidget):
             "iris_size": preset.iris_size,
             "accent_color": QColor(*preset.accent_color),
         }
+
+    def _enforce_low_battery_face(self) -> None:
+        """Force fearful face when battery is critically low."""
+        if self._battery_voltage is None:
+            return
+        low_battery = self._battery_voltage < 10.0
+        if low_battery and not self._low_battery_forced:
+            self._low_battery_forced = True
+            if self._current_emotion != "fearful":
+                self.set_emotion("fearful")
+        elif not low_battery and self._low_battery_forced:
+            self._low_battery_forced = False
+            if self._current_emotion == "fearful":
+                self.set_emotion(self._default_emotion)
