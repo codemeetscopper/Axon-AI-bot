@@ -147,7 +147,7 @@ class BridgeCommandPanel(QWidget):
         base_button = QPushButton("Get base (T=130)")
         base_button.clicked.connect(lambda: self._send_json({"T": 130}, label="Base feedback"))
         self._continuous_feedback = QCheckBox("Continuous feedback (T=131)")
-        self._continuous_feedback.toggled.connect(self._toggle_continuous_feedback)
+        self._continuous_feedback.toggled.connect(self.toggle_continuous_feedback)
         self._serial_echo = QCheckBox("Serial echo (T=143)")
         self._serial_echo.toggled.connect(self._toggle_serial_echo)
 
@@ -265,7 +265,7 @@ class BridgeCommandPanel(QWidget):
     def _restore_oled(self) -> None:
         self._send_json({"T": -3}, label="Restore OLED")
 
-    def _toggle_continuous_feedback(self, checked: bool) -> None:
+    def toggle_continuous_feedback(self, checked: bool) -> None:
         if not self._send_json({"T": 131, "cmd": 1 if checked else 0}, label="Continuous feedback"):
             self._continuous_feedback.blockSignals(True)
             self._continuous_feedback.setChecked(not checked)

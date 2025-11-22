@@ -37,6 +37,7 @@ class SimulatorMainWindow(QWidget):
         self._policy = policy
         self._calibrator = calibrator
         self._build_ui()
+        self.bridge_command_panel.toggle_continuous_feedback(True)
 
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
